@@ -301,6 +301,20 @@
     hover:not-disabled:bg-hover hover:not-disabled:text-fg;
 }
 
+/**
+ * Чекбокс — нативний, лише з узгодженим кольором і розміром.
+ *
+ * Своя мальована галочка тут була б витратою без виграшу: нативний елемент
+ * уже вміє все, чого від нього чекають (клавіатура, скрінрідер, стан
+ * indeterminate), а accent-color фарбує його тим самим токеном, що й кнопки.
+ * Курсор задається тут, бо глобальне правило в base покриває кнопки, а не поля.
+ */
+@utility checkbox {
+  @apply size-4 shrink-0 cursor-pointer
+    disabled:cursor-not-allowed disabled:opacity-45;
+  accent-color: var(--ui-accent-solid);
+}
+
 @utility input {
   /* 16px на мобільних навмисно: iOS зумить сторінку на будь-якому полі
      дрібніше 16px, і повернути масштаб користувач уже не може. */

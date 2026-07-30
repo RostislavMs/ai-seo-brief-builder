@@ -8,6 +8,7 @@ import { parsedPageSchema } from "../schemas/page";
 import { providerForUser } from "../services/ai";
 import { editBrief } from "../services/brief/editBrief";
 import { seoBriefSchema } from "../services/brief/schema";
+import { resolvePromptSet } from "../services/prompts/repository";
 import { activeRules } from "../services/rules/repository";
 
 const chatMessageSchema = z.object({
@@ -47,7 +48,11 @@ chatRoutes.post("/", async (c) => {
   // правил: спільні для всіх мов діють і без розпізнаної мови, тому в такому
   // разі просимо правила за самим сентинелом.
   const languageCode = languageCodeByName(body.brief.contentLanguage);
-  const rules = await activeRules(config, languageCode ?? ALL_LANGUAGES);
+
+  const [rules, prompts] = await Promise.all([
+    activeRules(config, languageCode ?? ALL_LANGUAGES),
+    resolvePromptSet(config),
+  ]);
 
   const result = await editBrief(
     {
@@ -57,6 +62,7 @@ chatRoutes.post("/", async (c) => {
       message: body.message,
       pages: body.pages,
       rules,
+      prompts,
     },
     provider,
   );

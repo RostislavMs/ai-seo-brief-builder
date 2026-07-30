@@ -16,8 +16,10 @@ interface KeywordTableProps {
 export function KeywordTable({ keywords }: KeywordTableProps) {
   if (keywords.length === 0) return null;
 
-  // Найважливіші ключі — ті, що вживаються найчастіше.
+  // Найважливіші ключі — ті, що вживаються найчастіше. Нулі опиняються в кінці
+  // самі собою, і саме там їм місце: це не норма, а заборона.
   const sorted = [...keywords].sort((a, b) => b.usage.max - a.usage.max);
+  const banned = sorted.some((keyword) => keyword.usage.max === 0);
 
   return (
     <section className="card">
@@ -29,6 +31,7 @@ export function KeywordTable({ keywords }: KeywordTableProps) {
           <p className="mt-0.5 text-2xs leading-relaxed text-subtle">
             Кількість вживань у всій статті — разом із заголовками, таблицями
             й входженнями у складі довших ключів.
+            {banned ? " Нуль означає, що форму не вживають зовсім." : ""}
           </p>
         </div>
         <p className="num text-2xs text-subtle">
@@ -68,7 +71,13 @@ export function KeywordTable({ keywords }: KeywordTableProps) {
                 key={`${index}-${keyword.keyword}`}
                 className="border-b border-line last:border-b-0"
               >
-                <td className="px-4 py-2.5 text-fg sm:px-5">
+                <td
+                  className={
+                    keyword.usage.max === 0
+                      ? "px-4 py-2.5 text-subtle line-through sm:px-5"
+                      : "px-4 py-2.5 text-fg sm:px-5"
+                  }
+                >
                   {keyword.keyword}
                 </td>
                 <td className="num px-4 py-2.5 text-right text-muted sm:px-5">

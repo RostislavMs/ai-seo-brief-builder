@@ -115,7 +115,10 @@ const h3Schema = z.object({
   wordCount: rangeSchema.describe("Word count range for this H3"),
   keywords: z
     .array(z.string())
-    .describe("IN THE CONTENT LANGUAGE. Keywords for this section"),
+    .describe(
+      "IN THE CONTENT LANGUAGE. Keywords for this section — 4-8 of them, " +
+        "word forms counted separately",
+    ),
   blocks: z.array(blockSchema).describe("Lists, tables or FAQ inside this H3"),
   children: z.array(h4Schema).describe("Nested H4; empty array if not needed"),
 });
@@ -133,7 +136,8 @@ const h2Schema = z.object({
     .array(z.string())
     .describe(
       "IN THE CONTENT LANGUAGE. Keywords for this section, as one flat list — " +
-        "do NOT split into primary and secondary",
+        "do NOT split into primary and secondary. 8-15 of them, listing the " +
+        "word forms of the language as separate entries.",
     ),
   blocks: z.array(blockSchema).describe("Lists, tables or FAQ inside this H2"),
   children: z.array(h3Schema).describe("Nested H3; empty array if not needed"),
@@ -156,7 +160,8 @@ const introSchema = z.object({
   keywords: z
     .array(z.string())
     .describe(
-      "IN THE CONTENT LANGUAGE. Keywords to place in the intro, as one flat list",
+      "IN THE CONTENT LANGUAGE. Keywords to place in the intro, as one flat " +
+        "list — 5-10 of them",
     ),
 });
 
@@ -165,44 +170,13 @@ const keywordSchema = z.object({
   usage: rangeSchema.describe(
     "How many times this keyword must appear in the finished article — " +
       "counting headings, tables and lists, and counting occurrences inside " +
-      "longer keywords, not only occurrences in body paragraphs",
+      "longer keywords, not only occurrences in body paragraphs. A rare " +
+      "keyword takes an exact number: min equal to max. Both bounds 0 mean " +
+      "the opposite — a form the writer must not use at all.",
   ),
 });
 
 /* ── Додаткові рекомендації ──────────────────────────────────────────────── */
-
-const uniqueSectionSchema = z.object({
-  title: z
-    .string()
-    .describe(
-      "IN THE CONTENT LANGUAGE. Copy the heading verbatim from \"structure\" — " +
-        "this must be a section you actually planned, not a topic you only " +
-        "thought about.",
-    ),
-  reason: z
-    .string()
-    .describe(
-      "IN ENGLISH. One sentence: what the competitors leave out and what this " +
-        "section gains against them.",
-    ),
-});
-
-const skippedSectionSchema = z.object({
-  title: z
-    .string()
-    .describe("IN THE CONTENT LANGUAGE. The topic as the competitors title it."),
-  competitors: z
-    .number()
-    .int()
-    .describe("How many of the analysed competitor pages cover this topic"),
-  reason: z
-    .string()
-    .describe(
-      "IN ENGLISH. One sentence on why it stays out: off topic for this " +
-        "article, one competitor's quirk, thin filler, or already covered " +
-        "under another heading — name which one.",
-    ),
-});
 
 const optionalAdditionSchema = z.object({
   placement: z
@@ -265,26 +239,12 @@ export const seoBriefSchema = z.object({
     .describe(
       "Summary table for the WHOLE article, sorted from the most frequent " +
         "keyword down. It must contain every keyword listed in the intro and " +
-        "in any section, plus the head terms of the topic and the shorter " +
-        "fragments they are built from. Scale it to the volume: roughly one " +
-        "entry per 80-120 words, and never fewer than 25 entries — dozens of " +
-        "rows, not a short highlight list.",
+        "in any section, plus the head terms of the topic, the shorter " +
+        "fragments they are built from and their word forms. Scale it to the " +
+        "volume: one entry per 20-40 words, and never fewer than 60 entries — " +
+        "hundreds of rows for a long article, not a short highlight list.",
     ),
   recommendations: z.object({
-    uniqueSections: z
-      .array(uniqueSectionSchema)
-      .describe(
-        "The sections of YOUR outline that none of the competitors has — every " +
-          "gap you found and planned for. Empty only if the competitors leave " +
-          "no gap at all.",
-      ),
-    skippedSections: z
-      .array(skippedSectionSchema)
-      .describe(
-        "The topics the competitors cover that you deliberately left out of " +
-          "the outline. Empty only if you planned every topic they cover — " +
-          "never pad it with topics that are in fact in \"structure\".",
-      ),
     optionalAdditions: z
       .array(optionalAdditionSchema)
       .describe(

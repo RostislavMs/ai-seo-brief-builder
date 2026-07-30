@@ -7,10 +7,15 @@ import type {
   ParsedPage,
   SeoBrief,
 } from "@brief/shared";
-import { normalizeRange, sumRanges } from "@brief/shared";
+import {
+  detectContentLanguage,
+  normalizeRange,
+  resolveContentLanguage,
+  sumRanges,
+} from "@brief/shared";
 import { AppError } from "../../http/errors";
 import type { AiProvider } from "../ai";
-import { detectContentLanguage } from "./language";
+import type { PromptSet } from "../prompts/repository";
 import { buildPagesPayload, medianWordCount } from "./payload";
 import { briefSystemPrompt, briefUserPrompt } from "./prompts";
 import { seoBriefSchema, toResponseSchema } from "./schema";
@@ -18,6 +23,14 @@ import { seoBriefSchema, toResponseSchema } from "./schema";
 export interface GenerateBriefInput {
   topic: string;
   pages: readonly ParsedPage[];
+  /**
+   * Мова, задана вручну, кодом ISO 639-1.
+   *
+   * Автовизначення по <html lang> надійне, але сторінка без цього атрибута
+   * розпізнається за характерними літерами — а вони в мов перетинаються.
+   * Помилка тут коштує всього ТЗ, тому в користувача є остаточне слово.
+   */
+  languageCode?: string;
   /**
    * Чинні правила для мови контенту.
    *
@@ -27,6 +40,14 @@ export interface GenerateBriefInput {
    * рівно як і з провайдером.
    */
   loadRules: (languageCode: string) => Promise<ActiveRules>;
+  /**
+   * Чинні тексти промптів.
+   *
+   * Готовими, а не функцією як правила: промпти не залежать ні від мови, ні
+   * від чогось іншого, що стає відомим тільки тут. Цей файл, як і раніше,
+   * не знає про базу — набір приходить уже прочитаним.
+   */
+  prompts: PromptSet;
 }
 
 /**
@@ -49,13 +70,18 @@ export async function generateBrief(
     );
   }
 
-  // Мова ТЗ не налаштовується — вона завжди читається зі самих конкурентів.
-  const language = detectContentLanguage(pages);
+  // Мова читається зі самих конкурентів; вибір користувача її перебиває.
+  const detected = detectContentLanguage(pages);
+  const language = resolveContentLanguage(detected, input.languageCode);
   const rules = await input.loadRules(language.code);
   const payload = buildPagesPayload(pages);
 
   const response = await provider.generateJson({
-    system: briefSystemPrompt({ language: language.name, rules }),
+    system: briefSystemPrompt({
+      language: language.name,
+      rules,
+      prompts: input.prompts,
+    }),
     messages: [
       {
         role: "user",
@@ -65,6 +91,7 @@ export async function generateBrief(
           pageCount: payload.pageCount,
           medianWords: medianWordCount(pages),
           detectedLanguage: language.name,
+          prompts: input.prompts,
         }),
       },
     ],
@@ -73,7 +100,8 @@ export async function generateBrief(
   });
 
   console.info(
-    `[brief] ${provider.name}/${response.model} · мова ${language.name} · ` +
+    `[brief] ${provider.name}/${response.model} · мова ${language.name}` +
+      `${language.overridden ? ` (вручну, визначено ${detected.name})` : ""} · ` +
       `правил ${rules.global.length}+${rules.language.length} · ` +
       `сторінок ${payload.pageCount} · промпт ${payload.chars} симв. · ` +
       `токени ${response.usage.inputTokens ?? "?"}→${response.usage.outputTokens ?? "?"}`,
@@ -180,11 +208,8 @@ function headingIndex(structure: readonly BriefH2[]): Map<string, string> {
 /**
  * Рекомендації описують структуру, тому й звіряються з нею.
  *
- * Три списки відповідають на три різні питання — що є в нас і немає в
- * конкурентів, що є в конкурентів і немає в нас, що можна додати понад план, —
- * і кожна тема належить рівно одному з них. Твердження, яке цю межу порушує,
- * гірше за відсутнє: райтер бачить розділ і в структурі, і в списку
- * «пропущено», і не знає, кому вірити.
+ * «Можна додати» про розділ, який уже обовʼязковий, знецінює і список,
+ * і структуру: райтер бачить те саме двічі й не знає, обовʼязкове воно чи ні.
  */
 function normalizeRecommendations(
   recommendations: BriefRecommendations,
@@ -198,18 +223,6 @@ function normalizeRecommendations(
     headings.get(titleKey(title)) ?? title.trim();
 
   return {
-    uniqueSections: recommendations.uniqueSections.map((section) => ({
-      ...section,
-      title: align(section.title),
-    })),
-    // Тема, яка насправді є в структурі, не пропущена — і в цьому списку вона
-    // лише збиває редактора з думки, що її забули.
-    skippedSections: recommendations.skippedSections
-      .filter((section) => !inStructure(section.title))
-      .map((section) => ({
-        ...section,
-        competitors: Math.max(0, section.competitors),
-      })),
     optionalAdditions: recommendations.optionalAdditions
       // «Можна додати» про вже обовʼязковий розділ знецінює обидва списки.
       // Блоки не фільтруємо: там title — це підпис, і збіг із заголовком
@@ -272,11 +285,23 @@ function withSectionKeywords(
     for (const h3 of h2.children) count(h3.keywords);
   }
 
-  const table = brief.keywords.map((keyword) => ({
-    ...keyword,
-    keyword: keyword.keyword.trim(),
-    usage: normalizeRange(keyword.usage),
-  }));
+  const table = brief.keywords.map((keyword) => {
+    const trimmed = keyword.keyword.trim();
+    const usage = normalizeRange(keyword.usage);
+    const mention = mentions.get(trimmed.toLowerCase());
+
+    return {
+      ...keyword,
+      keyword: trimmed,
+      // Нуль у таблиці означає «не вживати». Для ключа, названого в розділі,
+      // це пряма суперечність: розділ вимагає вжити його саме там. Норму
+      // виводимо з кількості розділів — так само, як для дописаних нижче.
+      usage:
+        mention && usage.max === 0
+          ? { min: mention.sections, max: mention.sections + 1 }
+          : usage,
+    };
+  });
 
   const known = new Set(table.map((row) => row.keyword.toLowerCase()));
 

@@ -5,6 +5,7 @@ export type * from "./types/session";
 export type * from "./types/api";
 export type * from "./types/account";
 export type * from "./types/rules";
+export type * from "./types/prompts";
 
 export { groupHeadings, outlineToText } from "./utils/headings";
 export { formatRange, normalizeRange, sumRanges } from "./utils/range";
@@ -20,6 +21,11 @@ export {
   normalizeLanguageTag,
 } from "./languages/registry";
 export { ALL_LANGUAGES, isRuleLanguage } from "./languages/scope";
+export type { LanguageDetection, LanguageSource } from "./languages/detect";
+export {
+  detectContentLanguage,
+  resolveContentLanguage,
+} from "./languages/detect";
 
 export type { CatalogEntry } from "./ai/catalog";
 export {

@@ -82,6 +82,9 @@ export const comparisonReportSchema = z.object({
       "IN THE CONTENT LANGUAGE. The keywords the competitors are built around, " +
         "most valuable first. List them all: whether this page already uses " +
         "them is checked separately, so do not filter and do not guess counts. " +
+        "One entry per 20-40 words of the competitor median, and never fewer " +
+        "than 60 — head terms, the shorter fragments they are built from and " +
+        "the word forms of the language as separate entries. " +
         "Derive them from the actual competitor text — never invent a query.",
     ),
   meta: z
@@ -190,7 +193,10 @@ export const pageComparisonSchema = z.object({
         occurrences: z.number().int(),
       }),
     )
-    .max(120),
+    // Межа — від здорового глузду, а не від формату: у реальних ТЗ зведена
+    // таблиця ключів на статтю в 7-8 тисяч слів має 150-330 рядків, і 120
+    // відрізало дві третини аналізу.
+    .max(500),
   meta: z
     .array(
       z.object({

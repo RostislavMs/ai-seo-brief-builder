@@ -9,6 +9,7 @@ import { ALL_LANGUAGES } from "@brief/shared";
 import type { AppConfig } from "../../config";
 import { AppError } from "../../http/errors";
 import { supabaseAdmin, throwDbError } from "../../lib/supabase";
+import { profileEmails } from "../account/emails";
 
 /**
  * Правила для мов у Supabase.
@@ -42,38 +43,15 @@ const RULE_COLUMNS =
   "id, language_code, rule, status, enabled, created_by, review_note, " +
   "created_at, updated_at";
 
-/**
- * Пошта авторів — окремим запитом, а не вкладеним select-ом.
- *
- * language_rules має два зв'язки з profiles (автор і той, хто розглянув),
- * тому вкладений select довелося б розрізняти підказкою на ім'я зв'язку.
- * Явний запит id → email не залежить ні від імені обмеження, ні від стану
- * кеша схеми PostgREST — а коштує один невеликий похід у базу.
- */
-async function authorEmails(
+/** Пошти авторів правил. Спільний запит із рештою «хто це зробив». */
+function authorEmails(
   config: AppConfig,
   rows: readonly Pick<RuleRow, "created_by">[],
 ): Promise<Map<string, string>> {
-  const ids = [
-    ...new Set(rows.map((row) => row.created_by).filter((id): id is string => Boolean(id))),
-  ];
-
-  if (ids.length === 0) return new Map();
-
-  const { data, error } = await supabaseAdmin(config)
-    .from("profiles")
-    .select("id, email")
-    .in("id", ids)
-    .returns<{ id: string; email: string }[]>();
-
-  if (error) {
-    // Ім'я автора — підпис, а не дані правила. Без нього список читається,
-    // тому падати через нього не варто.
-    console.warn("[rules] не вдалося прочитати авторів правил:", error);
-    return new Map();
-  }
-
-  return new Map((data ?? []).map((row) => [row.id, row.email]));
+  return profileEmails(
+    config,
+    rows.map((row) => row.created_by),
+  );
 }
 
 function toRule(

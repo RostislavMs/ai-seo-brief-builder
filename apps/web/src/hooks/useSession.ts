@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatMessage, PageAnalysis, Session } from "@brief/shared";
 import { ApiRequestError } from "../lib/api";
+import { usablePages } from "../lib/analyses";
 import {
   analyzeUrl,
   requestBrief,
@@ -13,6 +14,7 @@ import {
   loadSession,
   removeMessage,
   saveAnalysis,
+  setAnalysisExcluded,
   setOwnPage,
   updateSession,
 } from "../services/sessions";
@@ -40,6 +42,13 @@ interface UseSessionResult {
   /** Надсилає репліку в чат; за потреби оновлює ТЗ. */
   sendMessage: (text: string) => Promise<void>;
   rename: (name: string) => Promise<void>;
+  /** Задає мову контенту вручну; null — повернутися до автовизначення. */
+  setContentLanguage: (code: string | null) => Promise<void>;
+  /**
+   * Виключає сторінку конкурента з основи для ТЗ або повертає її в роботу.
+   * Розібраний контент лишається — повернення не вимагає нового парсингу.
+   */
+  toggleExcluded: (analysisId: string) => Promise<void>;
   /** Задає власну сторінку й одразу її парсить. */
   addOwnPage: (url: string) => Promise<void>;
   /** Парсить власну сторінку заново. */
@@ -188,14 +197,16 @@ export function useSession(id: string | undefined): UseSessionResult {
     const existing = current.current;
     if (!existing) return;
 
-    const pages = existing.analyses
-      .filter((analysis) => analysis.status === "success" && analysis.page)
-      .map((analysis) => analysis.page!);
+    const pages = usablePages(existing.analyses);
 
     if (pages.length === 0) {
       setBriefState({
         status: "error",
-        message: "Немає жодної успішно проаналізованої сторінки.",
+        // Про виключені сказано окремо: інакше «немає жодної» суперечило б
+        // списку сторінок, який видно поруч, і виглядало б як помилка.
+        message: existing.analyses.some((analysis) => analysis.excluded)
+          ? "Усі проаналізовані сторінки виключено з основи для ТЗ. Поверніть хоча б одну."
+          : "Немає жодної успішно проаналізованої сторінки.",
       });
       return;
     }
@@ -203,7 +214,11 @@ export function useSession(id: string | undefined): UseSessionResult {
     setBriefState({ status: "running" });
 
     try {
-      const brief = await requestBrief(existing.topic || existing.name, pages);
+      const brief = await requestBrief(
+        existing.topic || existing.name,
+        pages,
+        existing.contentLanguage,
+      );
 
       // Нове ТЗ знімає попередження про відкинуте старе.
       await updateSession(existing.id, { brief, legacyBriefRemoved: false });
@@ -318,14 +333,14 @@ export function useSession(id: string | undefined): UseSessionResult {
 
     if (!existing || !own) return;
 
-    const competitors = existing.analyses
-      .filter((analysis) => analysis.status === "success" && analysis.page)
-      .map((analysis) => analysis.page!);
+    const competitors = usablePages(existing.analyses);
 
     if (competitors.length === 0) {
       setComparisonState({
         status: "error",
-        message: "Немає жодної успішно проаналізованої сторінки конкурента.",
+        message: existing.analyses.some((analysis) => analysis.excluded)
+          ? "Усі сторінки конкурентів виключено. Поверніть хоча б одну у вкладці «Аналіз»."
+          : "Немає жодної успішно проаналізованої сторінки конкурента.",
       });
       return;
     }
@@ -337,6 +352,7 @@ export function useSession(id: string | undefined): UseSessionResult {
         existing.topic || existing.name,
         own,
         competitors,
+        existing.contentLanguage,
       );
 
       await updateSession(existing.id, { comparison });
@@ -357,9 +373,7 @@ export function useSession(id: string | undefined): UseSessionResult {
 
       // Історія для моделі — те, що було ДО цієї репліки.
       const history = existing.messages;
-      const pages = existing.analyses
-        .filter((analysis) => analysis.status === "success" && analysis.page)
-        .map((analysis) => analysis.page!);
+      const pages = usablePages(existing.analyses);
 
       setChatState({ status: "running" });
 
@@ -435,6 +449,67 @@ export function useSession(id: string | undefined): UseSessionResult {
     [patch],
   );
 
+  /**
+   * Мова застосовується одразу, а запис у базу йде після — як і в `rename`.
+   * Чекати на відповідь перед промальовкою означало б завмерлий список вибору
+   * на кожен вибір мови.
+   */
+  const setContentLanguage = useCallback(
+    async (code: string | null): Promise<void> => {
+      const existing = current.current;
+      if (!existing || code === existing.contentLanguage) return;
+
+      const previous = existing.contentLanguage;
+      patch(() => ({ contentLanguage: code }));
+
+      await updateSession(existing.id, { contentLanguage: code }).catch(() => {
+        // Відкат: показана мова, якої немає в базі, гірша за стару — після
+        // перезавантаження ТЗ склалося б не тією мовою, що видно в інтерфейсі.
+        patch(() => ({ contentLanguage: previous }));
+      });
+    },
+    [patch],
+  );
+
+  /**
+   * Прапорець застосовується одразу, а запис у базу йде після — як у `rename`
+   * і `setContentLanguage`. Чекати на відповідь означало б чекбокс, який
+   * ставиться з затримкою: у списку з десяти сторінок їх знімають підряд,
+   * і кожна пауза множиться на десять.
+   */
+  const toggleExcluded = useCallback(
+    async (analysisId: string): Promise<void> => {
+      const existing = current.current;
+      const target = existing?.analyses.find((item) => item.id === analysisId);
+
+      if (!existing || !target) return;
+
+      const next = !target.excluded;
+
+      patch((s) => ({
+        analyses: s.analyses.map((analysis) =>
+          analysis.id === analysisId
+            ? { ...analysis, excluded: next }
+            : analysis,
+        ),
+      }));
+
+      await setAnalysisExcluded(existing.id, analysisId, next).catch(() => {
+        // Відкат: знятий чекбокс при сторінці, що лишилася в основі ТЗ,
+        // гірший за повернений — інакше ТЗ склалося б із неї попри те,
+        // що видно в інтерфейсі.
+        patch((s) => ({
+          analyses: s.analyses.map((analysis) =>
+            analysis.id === analysisId
+              ? { ...analysis, excluded: target.excluded ?? false }
+              : analysis,
+          ),
+        }));
+      });
+    },
+    [patch],
+  );
+
   return {
     loadState,
     session,
@@ -447,6 +522,8 @@ export function useSession(id: string | undefined): UseSessionResult {
     runBrief,
     sendMessage,
     rename,
+    setContentLanguage,
+    toggleExcluded,
     addOwnPage,
     runOwnAnalysis,
     removeOwnPage,

@@ -29,6 +29,7 @@ interface SessionRow {
   brief: SeoBrief | null;
   comparison: PageComparison | null;
   legacy_brief_removed: boolean;
+  content_language: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -54,6 +55,7 @@ interface AnalysisRow {
   error: string | null;
   analyzed_at: string | null;
   role: AnalysisRole;
+  excluded: boolean;
 }
 
 type AnalysisRole = "competitor" | "own";
@@ -84,9 +86,9 @@ interface MessageRow {
 
 const SESSION_COLUMNS =
   "id, name, topic, urls, brief, comparison, legacy_brief_removed, " +
-  "created_at, updated_at";
+  "content_language, created_at, updated_at";
 const ANALYSIS_COLUMNS =
-  "id, position, url, status, page, error, analyzed_at, role";
+  "id, position, url, status, page, error, analyzed_at, role, excluded";
 const MESSAGE_COLUMNS = "id, role, content, changed_brief, created_at";
 
 function toAnalysis(row: AnalysisRow): PageAnalysis {
@@ -97,6 +99,10 @@ function toAnalysis(row: AnalysisRow): PageAnalysis {
     page: row.page,
     error: row.error,
     analyzedAt: row.analyzed_at,
+    // Лише коли true: за замовчуванням сторінка в роботі, і присилати
+    // `excluded: false` у кожному з десяти рядків означало б передавати
+    // «нічого не сталося» десять разів.
+    ...(row.excluded ? { excluded: true } : {}),
   };
 }
 
@@ -134,6 +140,9 @@ function toSession(
     brief: row.brief,
     ownPage: own ? toAnalysis(own) : null,
     comparison: row.comparison,
+    // Колонка додана міграцією 0005: у сесії, прочитаній старим клієнтом
+    // до її появи, значення просто немає, і це той самий «вір визначеному».
+    contentLanguage: row.content_language ?? null,
     ...(row.legacy_brief_removed ? { legacyBriefRemoved: true } : {}),
   };
 }
@@ -355,6 +364,8 @@ export interface UpdateSessionInput {
   brief?: SeoBrief | null;
   comparison?: PageComparison | null;
   legacyBriefRemoved?: boolean;
+  /** null — прибрати перевизначення й повернутися до автовизначення. */
+  contentLanguage?: string | null;
 }
 
 export async function updateSession(
@@ -371,6 +382,9 @@ export async function updateSession(
   if (patch.comparison !== undefined) changes["comparison"] = patch.comparison;
   if (patch.legacyBriefRemoved !== undefined) {
     changes["legacy_brief_removed"] = patch.legacyBriefRemoved;
+  }
+  if (patch.contentLanguage !== undefined) {
+    changes["content_language"] = patch.contentLanguage;
   }
 
   if (Object.keys(changes).length > 0) {
@@ -404,11 +418,21 @@ export async function deleteSession(
   if (error) throwDbError(error, "видалення сесії");
 }
 
+/**
+ * Часткова правка рядка сторінки.
+ *
+ * Поля необовʼязкові, бо цим шляхом ідуть два різні виклики: результат
+ * парсингу (усі чотири поля разом — вони описують один момент) і прапорець
+ * «не використовувати для ТЗ» сам по собі. Записувати при перемиканні
+ * прапорця ще й `page` означало б гнати в базу сотні кілобайт розібраного
+ * контенту заради одного boolean.
+ */
 export interface UpdateAnalysisInput {
-  status: PageAnalysis["status"];
-  page: ParsedPage | null;
-  error: string | null;
-  analyzedAt: string | null;
+  status?: PageAnalysis["status"];
+  page?: ParsedPage | null;
+  error?: string | null;
+  analyzedAt?: string | null;
+  excluded?: boolean;
 }
 
 export async function updateAnalysis(
@@ -420,14 +444,17 @@ export async function updateAnalysis(
 ): Promise<PageAnalysis> {
   await assertOwner(config, userId, sessionId);
 
+  const changes: Record<string, unknown> = {};
+
+  if (patch.status !== undefined) changes["status"] = patch.status;
+  if (patch.page !== undefined) changes["page"] = patch.page;
+  if (patch.error !== undefined) changes["error"] = patch.error;
+  if (patch.analyzedAt !== undefined) changes["analyzed_at"] = patch.analyzedAt;
+  if (patch.excluded !== undefined) changes["excluded"] = patch.excluded;
+
   const { data, error } = await supabaseAdmin(config)
     .from("session_analyses")
-    .update({
-      status: patch.status,
-      page: patch.page,
-      error: patch.error,
-      analyzed_at: patch.analyzedAt,
-    })
+    .update(changes)
     .eq("id", analysisId)
     .eq("session_id", sessionId)
     .select(ANALYSIS_COLUMNS)

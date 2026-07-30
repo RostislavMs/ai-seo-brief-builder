@@ -73,6 +73,21 @@ export async function saveAnalysis(
 }
 
 /**
+ * Виключає сторінку з основи для ТЗ або повертає її в роботу.
+ *
+ * Той самий маршрут, що й збереження результату парсингу, але без `page`:
+ * гнати в базу сотні кілобайт розібраного контенту заради одного прапорця
+ * немає сенсу.
+ */
+export function setAnalysisExcluded(
+  sessionId: string,
+  analysisId: string,
+  excluded: boolean,
+): Promise<PageAnalysis> {
+  return saveAnalysis(sessionId, analysisId, { excluded });
+}
+
+/**
  * Задає або замінює власну сторінку сесії. Разом із нею сервер скидає звіт
  * порівняння: він прив'язаний до конкретної адреси.
  */

@@ -27,12 +27,16 @@ export interface AnalyzeResponse {
 
 /**
  * POST /api/brief — згенерувати SEO ТЗ з уже спарсених сторінок.
- * Мова ТЗ не задається: вона визначається зі самих сторінок конкурентів.
+ *
+ * Мова визначається зі самих сторінок; `languageCode` лише перебиває
+ * визначену, коли користувач виправив її вручну у вкладці «Аналіз».
  */
 export interface BriefRequest {
   /** Цільова тема/ключ статті. */
   topic: string;
   pages: ParsedPage[];
+  /** Код ISO 639-1. Відсутній або невідомий — мова визначається зі сторінок. */
+  languageCode?: string;
 }
 
 export interface BriefResponse {
@@ -71,6 +75,8 @@ export interface CompareRequest {
   page: ParsedPage;
   /** Сторінки конкурентів — потрібна хоча б одна. */
   competitors: ParsedPage[];
+  /** Те саме перевизначення мови, що й у BriefRequest. */
+  languageCode?: string;
 }
 
 export interface CompareResponse {
@@ -127,6 +133,8 @@ export interface UpdateSessionRequest {
   brief?: SeoBrief | null;
   comparison?: PageComparison | null;
   legacyBriefRemoved?: boolean;
+  /** Код ISO 639-1 або null — повернутися до автовизначення. */
+  contentLanguage?: string | null;
 }
 
 /**
@@ -139,12 +147,21 @@ export interface SetOwnPageRequest {
   url: string;
 }
 
-/** PATCH /api/sessions/:id/analyses/:analysisId — результат одного URL. */
+/**
+ * PATCH /api/sessions/:id/analyses/:analysisId
+ *
+ * Два різні виклики одним маршрутом: результат парсингу (усі чотири поля
+ * разом — вони описують один момент) і прапорець «не використовувати для ТЗ»
+ * (сам, без решти). Тому поля необовʼязкові, але надіслати порожнє тіло
+ * не можна.
+ */
 export interface UpdateAnalysisRequest {
-  status: PageAnalysis["status"];
-  page: ParsedPage | null;
-  error: string | null;
-  analyzedAt: string | null;
+  status?: PageAnalysis["status"];
+  page?: ParsedPage | null;
+  error?: string | null;
+  analyzedAt?: string | null;
+  /** true — виключити сторінку з основи для ТЗ, false — повернути в роботу. */
+  excluded?: boolean;
 }
 
 export interface AnalysisResponse {

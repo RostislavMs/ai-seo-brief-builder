@@ -15,6 +15,7 @@ import { analyzeRoutes } from "./routes/analyze";
 import { briefRoutes } from "./routes/brief";
 import { chatRoutes } from "./routes/chat";
 import { compareRoutes } from "./routes/compare";
+import { promptRoutes } from "./routes/prompts";
 import { ruleRoutes } from "./routes/rules";
 import { sessionRoutes } from "./routes/sessions";
 
@@ -46,6 +47,7 @@ app.route("/keys", keyRoutes);
 app.route("/settings", settingsRoutes);
 app.route("/models", modelRoutes);
 app.route("/rules", ruleRoutes);
+app.route("/prompts", promptRoutes);
 app.route("/sessions", sessionRoutes);
 
 app.route("/analyze", analyzeRoutes);

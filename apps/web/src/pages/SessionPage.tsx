@@ -7,6 +7,7 @@ import { ComparePanel } from "../components/compare/ComparePanel";
 import { Callout } from "../components/ui/Callout";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Spinner } from "../components/ui/Spinner";
+import { isUsable, readyCount } from "../lib/analyses";
 import { formatDateTime } from "../lib/format";
 import { readJson, writeJson } from "../lib/storage";
 import { useSession } from "../hooks/useSession";
@@ -43,6 +44,8 @@ export function SessionPage() {
     runAnalysis,
     runBrief,
     sendMessage,
+    setContentLanguage,
+    toggleExcluded,
     addOwnPage,
     runOwnAnalysis,
     removeOwnPage,
@@ -120,9 +123,16 @@ export function SessionPage() {
     );
   }
 
-  const readyPages = session.analyses.filter(
-    (analysis) => analysis.status === "success" && analysis.page,
-  ).length;
+  /**
+   * Сторінки, з яких реально складеться ТЗ, — без виключених вручну.
+   *
+   * Саме це число вирішує, чи доступна кнопка генерації, тому й рахуються тут
+   * ті самі сторінки, які піде в промпт. Загальна кількість розібраних потрібна
+   * окремо: бейдж вкладки «Аналіз» показує, скільком URL узагалі вдалося
+   * дістати контент, і виключення сторінки цього не скасовує.
+   */
+  const usableCount = session.analyses.filter(isUsable).length;
+  const parsedCount = readyCount(session.analyses);
 
   /**
    * Найсвіжіший аналіз конкурента. Якщо він новіший за звіт порівняння,
@@ -144,7 +154,7 @@ export function SessionPage() {
 
   /** Бейджі вкладок одним місцем: чотири вкладені тернарники не читаються. */
   const badges: Record<Tab, string | null> = {
-    analysis: readyPages > 0 ? String(readyPages) : null,
+    analysis: parsedCount > 0 ? String(parsedCount) : null,
     brief: session.brief ? "•" : null,
     chat: session.messages.length > 0 ? String(session.messages.length) : null,
     // Бал, якщо порівняння вже є; крапка, якщо сторінка задана, але ще ні —
@@ -233,6 +243,9 @@ export function SessionPage() {
           analyses={session.analyses}
           running={analysisState.status === "running"}
           onRerun={() => void runAnalysis()}
+          contentLanguage={session.contentLanguage}
+          onLanguageChange={(code) => void setContentLanguage(code)}
+          onToggleExcluded={(analysisId) => void toggleExcluded(analysisId)}
         />
       )}
 
@@ -240,7 +253,8 @@ export function SessionPage() {
         <BriefPanel
           brief={session.brief}
           state={briefState}
-          readyPages={readyPages}
+          readyPages={usableCount}
+          excludedPages={parsedCount - usableCount}
           onGenerate={() => void runBrief()}
         />
       )}
@@ -260,7 +274,8 @@ export function SessionPage() {
           comparison={session.comparison}
           ownPageState={ownPageState}
           comparisonState={comparisonState}
-          readyCompetitors={readyPages}
+          readyCompetitors={usableCount}
+          excludedCompetitors={parsedCount - usableCount}
           stale={staleComparison}
           onAdd={(url) => void addOwnPage(url)}
           onRerunAnalysis={() => void runOwnAnalysis()}

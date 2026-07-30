@@ -7,6 +7,7 @@ import type {
   SessionListResponse,
   SessionResponse,
 } from "@brief/shared";
+import { isLanguageCode } from "@brief/shared";
 import { getConfig } from "../config";
 import { requireAuth, type AuthEnv } from "../http/auth";
 import { parseBody, readJson } from "../http/validate";
@@ -40,6 +41,16 @@ const createSchema = z.object({
   ownUrl: z.string().trim().max(2000).optional(),
 });
 
+/**
+ * Код мови приймається лише з реєстру: ним вибираються правила для промпта
+ * й ним модель пише весь контент ТЗ, тому «xx» тут дорожче за помилку 400.
+ */
+const languageCodeSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .refine(isLanguageCode, "невідомий код мови");
+
 const updateSchema = z
   .object({
     name: z.string().trim().min(1).max(120).optional(),
@@ -47,6 +58,7 @@ const updateSchema = z
     brief: seoBriefSchema.nullable().optional(),
     comparison: pageComparisonSchema.nullable().optional(),
     legacyBriefRemoved: z.boolean().optional(),
+    contentLanguage: languageCodeSchema.nullable().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "нема чого змінювати",
@@ -56,12 +68,22 @@ const ownPageSchema = z.object({
   url: z.string().trim().min(1, "URL не може бути порожнім").max(2000),
 });
 
-const analysisSchema = z.object({
-  status: z.enum(["pending", "loading", "success", "error"]),
-  page: parsedPageSchema.nullable(),
-  error: z.string().max(2000).nullable(),
-  analyzedAt: z.string().nullable(),
-});
+/**
+ * Одним маршрутом ідуть два різні виклики: результат парсингу (усі чотири
+ * поля разом) і прапорець «не використовувати для ТЗ» сам по собі. Тому поля
+ * необовʼязкові, а порожнє тіло відсіюється — як і в правці сесії.
+ */
+const analysisSchema = z
+  .object({
+    status: z.enum(["pending", "loading", "success", "error"]).optional(),
+    page: parsedPageSchema.nullable().optional(),
+    error: z.string().max(2000).nullable().optional(),
+    analyzedAt: z.string().nullable().optional(),
+    excluded: z.boolean().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "нема чого змінювати",
+  });
 
 const messageSchema = z.object({
   role: z.enum(["user", "assistant"]),

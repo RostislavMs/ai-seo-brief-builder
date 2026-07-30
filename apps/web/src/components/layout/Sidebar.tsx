@@ -7,6 +7,7 @@ import { useSessions } from "../../sessions/SessionsContext";
 import { formatRelative } from "../../lib/format";
 import { Spinner } from "../ui/Spinner";
 import {
+  BracesIcon,
   GlobeIcon,
   LogoutIcon,
   PlusIcon,
@@ -50,6 +51,17 @@ function groupByRecency(sessions: readonly SessionSummary[]): Group[] {
   }
 
   return buckets.filter((group) => group.items.length > 0);
+}
+
+/**
+ * Спільні для команди розділи в підвалі панелі. Один вираз на всі: розійтися
+ * у вигляді вони не мають права — це один список, а не кілька кнопок поспіль.
+ */
+function sectionClass({ isActive }: { isActive: boolean }): string {
+  return `flex w-full items-center gap-2.5 rounded-control px-2 py-2 text-sm
+    transition-colors duration-150 ease-out ${
+      isActive ? "bg-surface text-fg" : "text-muted hover:bg-hover hover:text-fg"
+    }`;
 }
 
 interface SidebarProps {
@@ -223,22 +235,13 @@ export function Sidebar({ onNavigate }: SidebarProps) {
 
       <div className="border-t border-line px-2 py-2">
         {/*
-         * Правила для мов — поряд із налаштуваннями, а не в них: вони
-         * спільні для команди, а налаштування особисті. Бейдж показує
+         * Правила для мов і промпти — поряд із налаштуваннями, а не в них:
+         * вони спільні для команди, а налаштування особисті. Бейдж показує
          * пропозиції, що чекають розгляду; для звичайного користувача це
          * його власні, і побачити зміну їхнього стану він має, не заходячи
          * на сторінку.
          */}
-        <NavLink
-          to="/rules"
-          onClick={onNavigate}
-          className={({ isActive }) =>
-            `flex w-full items-center gap-2.5 rounded-control px-2 py-2 text-sm
-             transition-colors duration-150 ease-out ${
-               isActive ? "bg-surface text-fg" : "text-muted hover:bg-hover hover:text-fg"
-             }`
-          }
-        >
+        <NavLink to="/rules" onClick={onNavigate} className={sectionClass}>
           <GlobeIcon className="size-4 shrink-0 text-subtle" />
           <span className="min-w-0 flex-1 truncate">Правила для мов</span>
           {pendingRules > 0 && (
@@ -251,6 +254,17 @@ export function Sidebar({ onNavigate }: SidebarProps) {
               {pendingRules}
             </span>
           )}
+        </NavLink>
+
+        {/*
+         * Промпти — під правилами: правило дописується в промпт, тому «що
+         * просимо в моделі» логічно читати після «які в нас додаткові вимоги».
+         * Бейджа тут немає й бути не може: промпт не має стану, який чекав би
+         * чиєїсь реакції.
+         */}
+        <NavLink to="/prompts" onClick={onNavigate} className={sectionClass}>
+          <BracesIcon className="size-4 shrink-0 text-subtle" />
+          <span className="min-w-0 flex-1 truncate">Промпти</span>
         </NavLink>
 
         {me && (

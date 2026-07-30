@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import type { Browser } from "playwright-core";
+import type { Browser, Page } from "playwright-core";
 import { diagnose, type AccessProblem } from "./detect";
 
 /**
@@ -41,6 +41,14 @@ export interface BrowserFetchOptions {
   executablePath: string;
   /** Скільки чекати після завантаження, щоб челендж пройшов сам. */
   settleMs: number;
+  /**
+   * Проксі для цього одного контексту; відсутній — прямий доступ.
+   *
+   * Саме на контекст, а не на запуск: екземпляр браузера спільний для всього
+   * процесу, а платний трафік потрібен лише тим сторінкам, які без нього
+   * не беруться.
+   */
+  proxy?: { server: string; username?: string; password?: string };
 }
 
 export interface BrowserFetchResult {
@@ -115,6 +123,84 @@ async function resolveUserAgent(browser: Browser): Promise<string> {
   }
 }
 
+/** Крок опитування сторінки та стеля очікування, поки вона домальовується. */
+const POLL_STEP_MS = 400;
+const GROWTH_MAX_MS = 5000;
+
+/** Заслонки, які можуть зникнути самі, якщо дати сторінці час. */
+const CHALLENGE_TITLE =
+  /just a moment|verifying|checking your browser|зачекайте|ci siamo quasi|un attimo|attendere|security check/i;
+
+/**
+ * Пауза власним таймером, а не `page.waitForTimeout`.
+ *
+ * Різниця принципова: будь-яке очікування, реалізоване всередині сторінки,
+ * залежить від самої сторінки — а нам потрібна межа, якої сторінка не здатна
+ * порушити (див. waitForChallenge нижче).
+ */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/**
+ * Чекає, поки заслонка челенджу зникне з заголовка — але не більше `maxMs`.
+ *
+ * Тут навмисно свій цикл, а не `page.waitForFunction`, і причина заміряна:
+ * на сторінці з віджетом Turnstile той висить рівно 30 с — стільки, скільки
+ * усталений таймаут Playwright, — **не зважаючи** ні на переданий `timeout: 8000`,
+ * ні на `polling: 500`. Тобто наша межа очікування просто не діяла, і кожна
+ * заблокована сторінка коштувала 30 с у ступені 2 і ще 30 с у ступені 5.
+ * Заміряно на premiumtimesng.com: 31.7 → 9.0 с.
+ *
+ * `page.title()` при цьому відповідає миттєво навіть на такій сторінці, тому
+ * опитування дешеве.
+ */
+async function waitForChallenge(page: Page, maxMs: number): Promise<void> {
+  const deadline = Date.now() + maxMs;
+
+  while (Date.now() < deadline) {
+    const title = await page.title().catch(() => null);
+
+    // Сторінка зникла з-під нас (редирект, закритий контекст) — вердикт по ній
+    // усе одно винесе diagnose нижче.
+    if (title === null) return;
+    if (!CHALLENGE_TITLE.test(title)) return;
+
+    await delay(POLL_STEP_MS);
+  }
+}
+
+/**
+ * Чекає, поки обсяг тексту перестане рости.
+ *
+ * Фіксована пауза після завантаження хибна з обох боків: готовій сторінці вона
+ * марно додає час до кожного запиту, а JS-сайт, що підтягує контент запитом,
+ * за неї не встигає — і ми віддаємо каскаду порожній каркас, після чого справу
+ * доводить архів застарілою копією.
+ *
+ * Тому пауза не фіксована, а за фактом: щойно текст двічі підряд однаковий,
+ * сторінка домалювалася. Стеля потрібна для нескінченних лічильників і
+ * карусельних заголовків — ті не стабілізуються ніколи.
+ */
+async function waitForStableText(page: Page, maxMs: number): Promise<void> {
+  const deadline = Date.now() + maxMs;
+  let previous = -1;
+
+  while (Date.now() < deadline) {
+    const length = await page
+      .evaluate(() => document.body?.innerText.length ?? 0)
+      .catch(() => -1);
+
+    if (length < 0) return;
+    if (length > 0 && length === previous) return;
+
+    previous = length;
+    await delay(POLL_STEP_MS);
+  }
+}
+
 /** Викликається під час зупинки сервера, щоб не лишати процес Chrome. */
 export async function closeBrowser(): Promise<void> {
   cachedUserAgent = null;
@@ -165,6 +251,7 @@ export async function fetchWithBrowser(
     viewport: { width: 1366, height: 768 },
     deviceScaleFactor: 1,
     userAgent: await resolveUserAgent(browser),
+    ...(options.proxy ? { proxy: options.proxy } : {}),
   });
 
   // navigator.webdriver — найпростіший і найпоширеніший маркер автоматизації.
@@ -192,20 +279,9 @@ export async function fetchWithBrowser(
     // Челендж може пройти сам, але фіксована пауза погана з двох боків:
     // сторінки без челенджу чекають марно, а справжній челендж інколи
     // не встигає. Тому чекаємо саме на зникнення заслонки із заголовка.
-    await page
-      .waitForFunction(
-        () =>
-          !/just a moment|verifying|checking your browser|зачекайте|ci siamo quasi|un attimo|attendere|security check/i.test(
-            document.title,
-          ),
-        { timeout: options.settleMs },
-      )
-      .catch(() => {
-        /* не пройшов — вирішить diagnose нижче */
-      });
+    await waitForChallenge(page, options.settleMs);
 
-    // Коротка пауза, щоб JS-сайт домалював контент після завантаження.
-    await page.waitForTimeout(1500);
+    await waitForStableText(page, GROWTH_MAX_MS);
 
     const html = await page.content();
     const status = response?.status() ?? 0;

@@ -1,5 +1,6 @@
 import type { SeoBrief } from "@brief/shared";
 import type { TaskState } from "../../hooks/useSession";
+import { plural } from "../../lib/format";
 import { Callout } from "../ui/Callout";
 import { EmptyState } from "../ui/EmptyState";
 import { Spinner } from "../ui/Spinner";
@@ -12,8 +13,17 @@ import { StructureTree } from "./StructureTree";
 interface BriefPanelProps {
   brief: SeoBrief | null;
   state: TaskState;
-  /** Скільки сторінок готові до передачі в AI. */
+  /**
+   * Скільки сторінок піде в AI: розібрані успішно й не виключені вручну
+   * у вкладці «Аналіз».
+   */
   readyPages: number;
+  /**
+   * Скільки розібраних сторінок виключено вручну. Потрібне, щоб відрізнити
+   * «жодну сторінку не вдалося розібрати» від «усі прибрали з основи»: дії
+   * для виправлення в цих випадках різні й ведуть у різні місця.
+   */
+  excludedPages: number;
   onGenerate: () => void;
 }
 
@@ -21,6 +31,7 @@ export function BriefPanel({
   brief,
   state,
   readyPages,
+  excludedPages,
   onGenerate,
 }: BriefPanelProps) {
   if (state.status === "running") {
@@ -51,8 +62,14 @@ export function BriefPanel({
           title="ТЗ ще не згенероване"
           description={
             readyPages > 0
-              ? `Готово ${readyPages} проаналізованих сторінок — можна складати ТЗ.`
-              : "Спершу потрібна хоча б одна успішно проаналізована сторінка."
+              ? `В основі ${readyPages} ${plural(readyPages, "сторінка", "сторінки", "сторінок")} — можна складати ТЗ.` +
+                (excludedPages > 0
+                  ? ` Ще ${excludedPages} виключено у вкладці «Аналіз».`
+                  : "")
+              : excludedPages > 0
+                ? "Усі розібрані сторінки виключено з основи. Поверніть хоча б одну " +
+                  "позначку у вкладці «Аналіз»."
+                : "Спершу потрібна хоча б одна успішно проаналізована сторінка."
           }
         >
           <button

@@ -37,12 +37,22 @@ export async function analyzeUrl(
   return result;
 }
 
+/**
+ * `languageCode` передається лише тоді, коли користувач задав мову вручну.
+ * Без нього сервер визначає її зі сторінок тією самою функцією, якою вкладка
+ * «Аналіз» показує визначену мову.
+ */
 export async function requestBrief(
   topic: string,
   pages: readonly ParsedPage[],
+  languageCode: string | null,
   signal?: AbortSignal,
 ): Promise<SeoBrief> {
-  const request: BriefRequest = { topic, pages: [...pages] };
+  const request: BriefRequest = {
+    topic,
+    pages: [...pages],
+    ...(languageCode ? { languageCode } : {}),
+  };
   const response = await api.post<BriefResponse>("/brief", request, signal);
 
   return response.brief;
@@ -56,9 +66,15 @@ export async function requestComparison(
   topic: string,
   page: ParsedPage,
   competitors: readonly ParsedPage[],
+  languageCode: string | null,
   signal?: AbortSignal,
 ): Promise<PageComparison> {
-  const request: CompareRequest = { topic, page, competitors: [...competitors] };
+  const request: CompareRequest = {
+    topic,
+    page,
+    competitors: [...competitors],
+    ...(languageCode ? { languageCode } : {}),
+  };
   const response = await api.post<CompareResponse>("/compare", request, signal);
 
   return response.comparison;

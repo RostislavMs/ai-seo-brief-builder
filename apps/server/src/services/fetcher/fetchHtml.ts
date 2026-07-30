@@ -6,6 +6,11 @@ export interface FetchHtmlOptions {
   timeoutMs: number;
   maxBytes: number;
   userAgent: string;
+  /**
+   * Транспорт запиту. Заданий — запит іде тунелем через проксі
+   * (див. proxy.ts); відсутній — напряму з IP сервера.
+   */
+  dispatcher?: unknown;
 }
 
 export interface DirectFetchResult {
@@ -100,17 +105,22 @@ export async function fetchDirect(
 ): Promise<DirectFetchResult> {
   let response: Response;
 
+  // Поля `dispatcher` немає в типах RequestInit, хоча рантайм Node його читає:
+  // fetch у Node — це undici, і саме цим полем йому підмінюють з'єднання.
+  const init: RequestInit & { dispatcher?: unknown } = {
+    redirect: "follow",
+    signal: AbortSignal.timeout(options.timeoutMs),
+    headers: {
+      "User-Agent": options.userAgent,
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "uk,en;q=0.9,*;q=0.5",
+    },
+  };
+
+  if (options.dispatcher) init.dispatcher = options.dispatcher;
+
   try {
-    response = await fetch(url, {
-      redirect: "follow",
-      signal: AbortSignal.timeout(options.timeoutMs),
-      headers: {
-        "User-Agent": options.userAgent,
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "uk,en;q=0.9,*;q=0.5",
-      },
-    });
+    response = await fetch(url, init);
   } catch (error) {
     const isTimeout =
       error instanceof Error &&

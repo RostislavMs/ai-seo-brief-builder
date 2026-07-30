@@ -19,10 +19,24 @@ export interface AppConfig {
   fetchUserAgent: string;
   allowPrivateHosts: boolean;
   maxUrlsPerRequest: number;
+  /** Стеля часу на весь каскад доступу для однієї сторінки. */
+  fetchBudgetMs: number;
   browserEnabled: boolean;
   browserTimeoutMs: number;
   browserPath: string;
   browserSettleMs: number;
+  /** Ступінь 3: зовнішній сервіс читання (r.jina.ai). */
+  readerEnabled: boolean;
+  readerTimeoutMs: number;
+  /** Ключ сервісу читання: знімає ліміт частоти й відкриває його проксі. */
+  readerKey: string;
+  /** Ступінь 4 каскаду: http://логін:пароль@хост:порт. Порожньо — вимкнено. */
+  proxyUrl: string;
+  proxyTimeoutMs: number;
+  /** Ступінь 6: шаблон адреси API рендерингу з {url}. Порожньо — вимкнено. */
+  scraperUrl: string;
+  scraperKey: string;
+  scraperTimeoutMs: number;
   archiveEnabled: boolean;
   archiveOnDemandEnabled: boolean;
   archiveSaveTimeoutMs: number;
@@ -40,10 +54,19 @@ const DEFAULTS: AppConfig = {
     "Mozilla/5.0 (compatible; AI-SEO-Brief-Builder/0.1; +https://github.com/local/ai-seo-brief-builder)",
   allowPrivateHosts: false,
   maxUrlsPerRequest: 10,
+  fetchBudgetMs: 150_000,
   browserEnabled: true,
   browserTimeoutMs: 35_000,
   browserPath: "",
   browserSettleMs: 8000,
+  readerEnabled: true,
+  readerTimeoutMs: 30_000,
+  readerKey: "",
+  proxyUrl: "",
+  proxyTimeoutMs: 25_000,
+  scraperUrl: "",
+  scraperKey: "",
+  scraperTimeoutMs: 40_000,
   archiveEnabled: true,
   archiveOnDemandEnabled: true,
   archiveSaveTimeoutMs: 90_000,
@@ -111,6 +134,21 @@ export function getConfig(): AppConfig {
     maxUrlsPerRequest: asNumber(
       runtime["maxUrlsPerRequest"],
       DEFAULTS.maxUrlsPerRequest,
+    ),
+    fetchBudgetMs: asNumber(runtime["fetchBudgetMs"], DEFAULTS.fetchBudgetMs),
+    readerEnabled: asBoolean(runtime["readerEnabled"], DEFAULTS.readerEnabled),
+    readerTimeoutMs: asNumber(
+      runtime["readerTimeoutMs"],
+      DEFAULTS.readerTimeoutMs,
+    ),
+    readerKey: asString(runtime["readerKey"], DEFAULTS.readerKey),
+    proxyUrl: asString(runtime["proxyUrl"], DEFAULTS.proxyUrl),
+    proxyTimeoutMs: asNumber(runtime["proxyTimeoutMs"], DEFAULTS.proxyTimeoutMs),
+    scraperUrl: asString(runtime["scraperUrl"], DEFAULTS.scraperUrl),
+    scraperKey: asString(runtime["scraperKey"], DEFAULTS.scraperKey),
+    scraperTimeoutMs: asNumber(
+      runtime["scraperTimeoutMs"],
+      DEFAULTS.scraperTimeoutMs,
     ),
     browserEnabled: asBoolean(runtime["browserEnabled"], DEFAULTS.browserEnabled),
     browserTimeoutMs: asNumber(

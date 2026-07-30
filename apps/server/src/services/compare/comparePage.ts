@@ -6,11 +6,15 @@ import type {
   PageComparison,
   ParsedPage,
 } from "@brief/shared";
-import { normalizeRange } from "@brief/shared";
+import {
+  detectContentLanguage,
+  normalizeRange,
+  resolveContentLanguage,
+} from "@brief/shared";
 import { AppError } from "../../http/errors";
 import type { AiProvider } from "../ai";
-import { detectContentLanguage } from "../brief/language";
 import { buildPagePayload, buildPagesPayload } from "../brief/payload";
+import type { PromptSet } from "../prompts/repository";
 import { buildKeywords, buildMetrics, buildScore } from "./metrics";
 import { comparisonSystemPrompt, comparisonUserPrompt } from "./prompts";
 import {
@@ -27,7 +31,11 @@ import {
  */
 const LIMITS = {
   sections: 40,
-  keywords: 80,
+  // Ключів навмисно на порядок більше за решту: це не перелік для вичитування,
+  // а таблиця покриття, і кожен рядок у ній рахує код, а не читає людина.
+  // У реальних ТЗ таких рядків 150-330 на статтю в 7-8 тисяч слів, тому 80
+  // відрізало саме довгий хвіст — те, чого на сторінці якраз і немає.
+  keywords: 400,
   strengths: 12,
   actions: 8,
 } as const;
@@ -41,12 +49,16 @@ export interface ComparePageInput {
   own: ParsedPage;
   /** Сторінки конкурентів — потрібна хоча б одна з контентом. */
   competitors: readonly ParsedPage[];
+  /** Мова, задана вручну, кодом ISO 639-1 — те саме, що в генерації ТЗ. */
+  languageCode?: string;
   /**
    * Чинні правила для мови контенту — так само функцією, як у генерації ТЗ:
    * мова визначається тут, зі самих сторінок, тому на момент виклику ще
    * не відомо, правила якої мови потрібні.
    */
   loadRules: (languageCode: string) => Promise<ActiveRules>;
+  /** Чинні тексти промптів — так само готовими, як у генерації ТЗ. */
+  prompts: PromptSet;
 }
 
 /**
@@ -79,8 +91,13 @@ export async function comparePage(
   }
 
   // Мова визначається по всіх сторінках разом: власна й конкурентні — це один
-  // ринок, а зайвий голос корисний, коли <html lang> є не в усіх.
-  const language = detectContentLanguage([...competitors, input.own]);
+  // ринок, а зайвий голос корисний, коли <html lang> є не в усіх. Вибір
+  // користувача з вкладки «Аналіз» перебиває визначену й тут: мова в сесії
+  // одна, і звіт, складений іншою мовою, ніж ТЗ, читався б як чужий.
+  const language = resolveContentLanguage(
+    detectContentLanguage([...competitors, input.own]),
+    input.languageCode,
+  );
   const rules = await input.loadRules(language.code);
 
   const own = buildPagePayload(input.own);
@@ -88,7 +105,11 @@ export async function comparePage(
   const metrics = buildMetrics(input.own, competitors);
 
   const response = await provider.generateJson({
-    system: comparisonSystemPrompt({ language: language.name, rules }),
+    system: comparisonSystemPrompt({
+      language: language.name,
+      rules,
+      prompts: input.prompts,
+    }),
     messages: [
       {
         role: "user",
@@ -100,6 +121,7 @@ export async function comparePage(
           ownWords: metrics.wordCount.own,
           medianWords: metrics.wordCount.median,
           detectedLanguage: language.name,
+          prompts: input.prompts,
         }),
       },
     ],

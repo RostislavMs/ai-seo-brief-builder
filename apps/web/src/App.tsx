@@ -5,6 +5,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppShell } from "./components/layout/AppShell";
 import { HomePage } from "./pages/HomePage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { PromptsPage } from "./pages/PromptsPage";
 import { RulesPage } from "./pages/RulesPage";
 import { SessionPage } from "./pages/SessionPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -34,6 +35,7 @@ function AuthenticatedArea() {
                 <Route path="/" element={<HomePage />} />
                 <Route path="/session/:id" element={<SessionPage />} />
                 <Route path="/rules" element={<RulesPage />} />
+                <Route path="/prompts" element={<PromptsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>

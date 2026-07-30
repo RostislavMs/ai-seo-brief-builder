@@ -126,6 +126,28 @@ export function PowerIcon({ className = "size-4" }: IconProps) {
   );
 }
 
+/**
+ * Промпти: фігурні дужки — тим самим знаком у промпті позначені вставки
+ * (`{{topic}}`), тому іконка читається як «текст зі підстановками», а не як
+ * абстрактний документ.
+ */
+export function BracesIcon({ className = "size-4" }: IconProps) {
+  return (
+    <svg {...BASE} className={className}>
+      <path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1" />
+    </svg>
+  );
+}
+
+/** Скинути промпт до початкового тексту. */
+export function UndoIcon({ className = "size-4" }: IconProps) {
+  return (
+    <svg {...BASE} className={className}>
+      <path d="M3 8h11a5 5 0 0 1 0 10H8M3 8l4-4M3 8l4 4" />
+    </svg>
+  );
+}
+
 export function ChevronDownIcon({ className = "size-4" }: IconProps) {
   return (
     <svg {...BASE} className={className}>

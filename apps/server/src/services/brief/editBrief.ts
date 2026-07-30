@@ -6,6 +6,7 @@ import type {
 } from "@brief/shared";
 import { AppError } from "../../http/errors";
 import type { AiMessage, AiProvider } from "../ai";
+import type { PromptSet } from "../prompts/repository";
 import { normalizeBrief } from "./generateBrief";
 import { buildCompactPagesPayload } from "./payload";
 import { chatSystemPrompt } from "./prompts";
@@ -29,6 +30,8 @@ export interface EditBriefInput {
    * тут визначати не треба, вона вже зафіксована в самому брифі.
    */
   rules: ActiveRules;
+  /** Чинні тексти промптів — так само готовими, як у генерації. */
+  prompts: PromptSet;
 }
 
 export interface EditBriefResult {
@@ -63,6 +66,7 @@ export async function editBrief(
       briefJson: JSON.stringify(input.brief),
       pagesJson: pages.json,
       rules: input.rules,
+      prompts: input.prompts,
     }),
     messages,
     responseSchema: toChatResponseSchema(),

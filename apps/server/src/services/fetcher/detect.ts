@@ -6,9 +6,15 @@
  * сторінкою челенджу, а SPA — порожній каркас без тексту.
  */
 
-/** Заголовки <title> сторінок-заслонок найпоширеніших WAF. */
+/**
+ * Заголовки <title> сторінок-заслонок найпоширеніших WAF.
+ *
+ * Cloudflare перекладає заслонку за локаллю браузера, а ступінь 2 ходить
+ * із `uk-UA`, тому українські варіанти тут не екзотика, а щоденність:
+ * заміряно на glassdoor.com і crunchbase.com — «Трохи зачекайте…».
+ */
 const BLOCK_TITLES =
-  /just a moment|attention required|access denied|access to this page has been denied|pardon our interruption|are you a robot|security check|verify you are human|forbidden|blocked|bot detection|перевірка|доступ заборонено/i;
+  /just a moment|attention required|access denied|access to this page has been denied|pardon our interruption|are you a robot|security check|verify you are human|verifying connection|forbidden|blocked|bot detection|перевірка|трохи зачекайте|доступ заборонено/i;
 
 /** Скрипти й cookie-маркери систем захисту. */
 const CHALLENGE_MARKERS =
@@ -81,12 +87,32 @@ export function diagnose(
 
   if (status === 0) return { ...base, problem: "network" };
 
-  if (status === 403 || status === 429 || status === 503) {
-    return { ...base, problem: "blocked" };
-  }
-
   if (status === 404 || status === 410) return { ...base, problem: "not_found" };
-  if (status >= 400) return { ...base, problem: "http_error" };
+
+  /**
+   * Код відповіді — не вердикт. Заміряно на trustpilot.com: браузер отримує
+   * 403 разом із повною сторінкою — справжній заголовок і 4247 слів тексту.
+   * Стара перевірка викидала цей контент через код і йшла аж до архіву.
+   *
+   * Тому спершу дивимо в тіло: якщо там повноцінний матеріал без ознак
+   * челенджу, беремо його попри код. Поріг високий (той самий, що для SPA),
+   * бо заслонки бувають балакучі: у Wayback її боілерплейт — 583 слова.
+   */
+  if (status >= 400) {
+    const contentDespiteStatus =
+      words >= MIN_WORDS_SPA &&
+      !BLOCK_TITLES.test(title) &&
+      !CHALLENGE_MARKERS.test(html);
+
+    if (!contentDespiteStatus) {
+      if (status === 403 || status === 429 || status === 503) {
+        return { ...base, problem: "blocked" };
+      }
+      return { ...base, problem: "http_error" };
+    }
+
+    return { ...base, problem: null };
+  }
 
   if (headers && "cf-mitigated" in headers) {
     return { ...base, problem: "blocked" };

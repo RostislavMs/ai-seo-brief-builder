@@ -124,7 +124,10 @@ export const api = {
     });
   },
 
-  delete(path: string, signal?: AbortSignal) {
-    return request<void>(path, { method: "DELETE", signal });
+  // Тип відповіді за замовчуванням void: більшість видалень віддає 204.
+  // Параметр потрібен тим маршрутам, де видалення повертає новий стан —
+  // скидання промпта до початкового тексту, наприклад.
+  delete<TResponse = void>(path: string, signal?: AbortSignal) {
+    return request<TResponse>(path, { method: "DELETE", signal });
   },
 };

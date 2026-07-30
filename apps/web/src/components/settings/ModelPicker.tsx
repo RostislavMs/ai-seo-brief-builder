@@ -1,6 +1,7 @@
-import { useId, useMemo } from "react";
+import { useMemo } from "react";
 import type { ModelOption, ModelsResponse } from "@brief/shared";
 import { Badge, type BadgeTone } from "../ui/Badge";
+import { Combobox, type ComboboxOption } from "../ui/Combobox";
 
 /**
  * Вибір моделі.
@@ -8,6 +9,11 @@ import { Badge, type BadgeTone } from "../ui/Badge";
  * Список приходить від самого провайдера — доступність залежить від ключа,
  * і показувати каталог як істину означало б пропонувати те, чого немає.
  * Каталог додає лише ціни й мітки.
+ *
+ * Комбобокс, а не `<select>`: у провайдера доступних моделей десятки, назви
+ * в них починаються однаково («Gemini 2.5 Flash Lite», «Gemini 2.0 Flash»), і
+ * в нативному списку їх доводиться перечитувати очима. З пошуком «lite» або
+ * «3.6» відповідь одна. Групи лишаються — вони кажуть, що взяти, коли байдуже.
  */
 
 const TIER_LABEL: Record<NonNullable<ModelOption["tier"]>, string> = {
@@ -50,56 +56,46 @@ export function ModelPicker({
   onChange,
   disabled = false,
 }: ModelPickerProps) {
-  const id = useId();
+  const options = useMemo<ComboboxOption[]>(() => {
+    const inTier = (tier: ModelOption["tier"]): ModelOption[] =>
+      data.models.filter((model) => model.tier === tier);
 
-  const groups = useMemo(() => {
-    const byTier = TIER_ORDER.map((tier) => ({
-      tier,
-      label: TIER_LABEL[tier],
-      items: data.models.filter((model) => model.tier === tier),
-    })).filter((group) => group.items.length > 0);
+    const groups: { label: string; items: ModelOption[] }[] = [
+      ...TIER_ORDER.map((tier) => ({
+        label: TIER_LABEL[tier],
+        items: inTier(tier),
+      })),
+      { label: "Інші доступні за ключем", items: inTier(null) },
+    ].filter((group) => group.items.length > 0);
 
-    const others = data.models.filter((model) => model.tier === null);
-
-    return others.length > 0
-      ? [...byTier, { tier: null, label: "Інші доступні за ключем", items: others }]
-      : byTier;
+    return groups.flatMap((group) =>
+      group.items.map((model) => ({
+        value: model.id,
+        label: model.label,
+        // Ідентифікатор другим рядком, а не в назві: шукають і за ним
+        // («gemini-3.6»), але читають усе ж назву.
+        hint: model.id,
+        meta: formatPrice(model),
+        group: group.label,
+      })),
+    );
   }, [data.models]);
 
   const selected = data.models.find((model) => model.id === value) ?? null;
 
   return (
     <div className="space-y-2">
-      <label htmlFor={id} className="block text-xs font-medium text-muted">
-        Модель
-      </label>
-
-      <select
-        id={id}
-        className="input"
+      <Combobox
+        label="Модель"
         value={value}
-        onChange={(event) => onChange(event.target.value)}
-        disabled={disabled || data.models.length === 0}
-      >
-        {/* Модель могла бути збережена раніше, а потім зникнути з переліку:
-            без цього пункту select мовчки показав би чужу назву. */}
-        {value && !selected && <option value={value}>{value} (недоступна)</option>}
-
-        {groups.map((group) => (
-          <optgroup key={group.label} label={group.label}>
-            {group.items.map((model) => {
-              const price = formatPrice(model);
-
-              return (
-                <option key={model.id} value={model.id}>
-                  {model.label}
-                  {price ? ` — ${price}` : ""}
-                </option>
-              );
-            })}
-          </optgroup>
-        ))}
-      </select>
+        options={options}
+        onChange={onChange}
+        // Модель могла бути збережена раніше, а потім зникнути з переліку:
+        // без цього підпису поле показало б порожнечу замість причини.
+        missingLabel={(id) => `${id} (недоступна)`}
+        placeholder="Назва або ідентифікатор моделі"
+        disabled={disabled}
+      />
 
       {selected && (
         <div className="panel space-y-2 p-3">

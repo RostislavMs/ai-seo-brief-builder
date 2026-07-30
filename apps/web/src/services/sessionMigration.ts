@@ -43,15 +43,17 @@ function isIntro(value: unknown): boolean {
 }
 
 /**
- * Додаткові рекомендації: три списки про структуру плюс загальні поради.
- * До них у цьому полі лежали три переліки рядків — компоненти читають нові
+ * Додаткові рекомендації: що можна додати понад план і загальні поради.
+ * До них у цьому полі лежали переліки рядків — компоненти читають нові
  * назви, тому старий формат тут не «майже підходить», а ламає панель ТЗ.
+ *
+ * `uniqueSections` і `skippedSections` не перевіряються: вони прибрані з
+ * формату, і бриф, у якому вони ще лежать, від цього не стає застарілим —
+ * решта полів у ньому та сама, а зайві панель просто не читає.
  */
 function isRecommendations(value: unknown): boolean {
   return (
     isRecord(value) &&
-    Array.isArray(value["uniqueSections"]) &&
-    Array.isArray(value["skippedSections"]) &&
     Array.isArray(value["optionalAdditions"]) &&
     Array.isArray(value["structureNotes"])
   );
@@ -176,6 +178,10 @@ export function migrateSession(raw: unknown): MigrationResult | null {
     // і даними, через яку стара сесія колись дала чорний екран.
     ownPage: null,
     comparison: null,
+    // З тієї ж причини: перевизначення мови з'явилося після переходу на
+    // акаунти, тому в локальній сесії його немає, і `undefined` тут читався б
+    // як «мова задана», щойно хтось перевірить поле на присутність.
+    contentLanguage: null,
     legacyBriefRemoved,
   };
 

@@ -250,26 +250,46 @@ export function ProviderCard({
 
       {editing && (
         <div className="space-y-3">
-          <label className="block space-y-1.5">
-            <span className="text-xs font-medium text-muted">API-ключ</span>
-            {/* type="password": ключ бачить будь-хто, хто дивиться в екран,
-                а вводять його часто не на самоті. */}
-            <input
-              type="password"
-              className="input font-mono"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              placeholder={
-                provider === "anthropic"
-                  ? "sk-ant-…"
-                  : provider === "openai"
-                    ? "sk-…"
-                    : "AIza… або AQ.…"
-              }
-              autoComplete="off"
-              spellCheck={false}
-            />
-          </label>
+          {/*
+            Власна <form> навколо поля ключа — не для надсилання, а щоб
+            обмежити область автозаповнення.
+
+            Без неї Chrome вважає «формою входу» всю сторінку: поля, не
+            обгорнуті у form, він групує разом, тому єдине поле-пароль ставало
+            паролем, а найближче текстове поле — логіном. У поле пошуку моделі
+            підставлявся email акаунта, а в поле ключа — збережений пароль.
+            Форма замикає це поле окремо, а `new-password` каже, що поле чекає
+            новий секрет, а не збережений: `autocomplete="off"` для паролів
+            Chrome навмисно зневажає.
+          */}
+          <form autoComplete="off" onSubmit={(event) => event.preventDefault()}>
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-muted">API-ключ</span>
+              {/* type="password": ключ бачить будь-хто, хто дивиться в екран,
+                  а вводять його часто не на самоті. */}
+              <input
+                type="password"
+                className="input font-mono"
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+                placeholder={
+                  provider === "anthropic"
+                    ? "sk-ant-…"
+                    : provider === "openai"
+                      ? "sk-…"
+                      : "AIza… або AQ.…"
+                }
+                name={`${provider}-api-key`}
+                autoComplete="new-password"
+                // Сторонні менеджери паролів мають власні позначки відмови:
+                // 1Password, LastPass і Dashlane читають саме ці атрибути.
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
+                spellCheck={false}
+              />
+            </label>
+          </form>
 
           <button
             type="button"
