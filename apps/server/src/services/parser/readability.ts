@@ -1,6 +1,24 @@
 import { JSDOM, VirtualConsole } from "jsdom";
 import { Readability } from "@mozilla/readability";
 
+/**
+ * ⚠️ jsdom тримається на 26.x навмисно — не оновлювати без перевірки на Vercel.
+ *
+ * З 27-ї версії jsdom залежить від @exodus/bytes, а це чистий ESM, до якого
+ * CommonJS-пакети (html-encoding-sniffer, whatwg-url) звертаються через
+ * require(). Node таке дозволяє з 22.12, а завантажувач модулів Vercel — ні:
+ * кожен запит до API падав з ERR_REQUIRE_ESM ще до входу в маршрут, бо jsdom
+ * вантажиться разом з усім API одним чанком. Вмирав навіть /api/health.
+ *
+ * Забандлити цю межу замість зовнішніх модулів не вийшло: інлайн jsdom тягне
+ * за собою інлайн усього дерева, а на ньому ламається вже interop інших
+ * CommonJS-пакетів (`util.inherits` у jws із ланцюжка @google/genai).
+ *
+ * Перевірити перед підняттям версії: зібрати з `NITRO_PRESET=vercel` і
+ * запустити функцію з прапорцем `node --no-experimental-require-module` —
+ * він відтворює поведінку завантажувача Vercel локально.
+ */
+
 export interface MainContent {
   /** HTML лише основного контенту — далі з нього дістається структура. */
   contentHtml: string;
