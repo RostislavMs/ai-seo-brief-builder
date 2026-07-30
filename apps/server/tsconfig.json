@@ -1,0 +1,13 @@
+{
+  "extends": "./.nitro/types/tsconfig.json",
+  "compilerOptions": {
+    // Nitro генерує свій tsconfig зі "strict": false. Без strictNullChecks
+    // zod виводить усі поля як опціональні (бо `undefined extends string`
+    // стає true), а `string | null` згортається до `string` — типізація
+    // валідації перетворюється на фікцію. Тому перекриваємо явно.
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true
+  }
+}

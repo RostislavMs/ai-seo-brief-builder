@@ -1,0 +1,68 @@
+import { Component, type ErrorInfo, type ReactNode } from "react";
+
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  error: Error | null;
+}
+
+/**
+ * Ловить помилки рендеру, щоб одна зламана деталь не гасила весь застосунок.
+ *
+ * Причина конкретна: після зміни формату ТЗ старі дані в localStorage дали
+ * `Cannot read properties of undefined` — і користувач побачив цілком чорний
+ * екран без жодної підказки. Дані виправлені міграцією, але страховка потрібна:
+ * повна відмова інтерфейсу — надто дорога ціна за один невірний доступ до поля.
+ */
+export class ErrorBoundary extends Component<
+  ErrorBoundaryProps,
+  ErrorBoundaryState
+> {
+  override state: ErrorBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { error };
+  }
+
+  override componentDidCatch(error: Error, info: ErrorInfo): void {
+    console.error("[ui] помилка рендеру:", error, info.componentStack);
+  }
+
+  private readonly reset = (): void => {
+    this.setState({ error: null });
+  };
+
+  override render(): ReactNode {
+    const { error } = this.state;
+    if (!error) return this.props.children;
+
+    return (
+      <div className="card space-y-4 p-4 sm:p-6" role="alert">
+        <div>
+          <h2 className="text-sm font-semibold text-danger">
+            Щось зламалося під час відображення
+          </h2>
+          <p className="mt-1 text-sm leading-relaxed text-subtle">
+            Решта застосунку працює. Якщо це стара сесія, найпростіше —
+            згенерувати ТЗ заново.
+          </p>
+        </div>
+
+        <pre className="panel overflow-x-auto p-3 text-xs text-muted">
+          {error.message}
+        </pre>
+
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button type="button" className="btn-ghost" onClick={this.reset}>
+            Спробувати ще раз
+          </button>
+          <a href="/" className="btn-ghost">
+            До списку сесій
+          </a>
+        </div>
+      </div>
+    );
+  }
+}

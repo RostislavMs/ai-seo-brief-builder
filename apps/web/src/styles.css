@@ -1,0 +1,312 @@
+@import "tailwindcss";
+
+/* Потрібен рідко — майже вся тема їде на семантичних токенах, — але лишається
+   для випадків, де світла й темна теми вимагають різної структури, а не кольору
+   (наприклад, різна сила тіні або inset замість border). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * ── Палітра ────────────────────────────────────────────────────────────────
+ *
+ * Токени семантичні, а не «шкала світлості»: canvas / surface / inset,
+ * fg / muted / subtle. Попередній набір ink-50…ink-950 темі не піддавався
+ * взагалі — bg-ink-950 буквально означає «темний фон», і у світлій темі
+ * кожне таке місце довелося б супроводжувати dark:-варіантом.
+ *
+ * Значення живуть у --ui-*, бо саме їх перевизначає темна тема нижче.
+ * @theme inline підставляє var() всередину утиліт, тому bg-surface і text-fg
+ * змінюють колір самі — dark: у розмітці не потрібен.
+ *
+ * Контраст перевірено для обох тем: fg / muted / subtle тримають ≥4.5:1 на
+ * своїх фонах, межі інтерактивних елементів (line-strong) — ≥3:1.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Теплий нейтральний папір: чистий сірий на світлому виглядає стерильно. */
+  --ui-canvas: oklch(0.985 0.002 95);
+  --ui-surface: oklch(1 0 0);
+  --ui-inset: oklch(0.967 0.003 95);
+  --ui-hover: oklch(0.955 0.004 95);
+
+  /* line — декоративні розділювачі; line-strong — межі інтерактивних
+     елементів (інпути, ghost-кнопки), тому тримає 3:1 за WCAG 1.4.11. */
+  --ui-line: oklch(0.912 0.004 95);
+  --ui-line-strong: oklch(0.63 0.006 95);
+
+  --ui-fg: oklch(0.2 0.008 95);
+  --ui-muted: oklch(0.42 0.008 95);
+  --ui-subtle: oklch(0.53 0.008 95);
+  /* Суто декоративні знаки: булети, порожні клітинки, «404». Тексту не носить. */
+  --ui-faint: oklch(0.72 0.006 95);
+
+  /* accent — читабельний акцент для тексту й меж;
+     accent-solid — заливка кнопки, під неї свій accent-ink. */
+  --ui-accent: oklch(0.48 0.19 277);
+  --ui-accent-solid: oklch(0.54 0.2 277);
+  --ui-accent-solid-hover: oklch(0.47 0.2 277);
+  --ui-accent-ink: oklch(0.99 0.004 277);
+  --ui-accent-soft: oklch(0.958 0.022 277);
+  --ui-accent-line: oklch(0.87 0.06 277);
+
+  --ui-success: oklch(0.47 0.13 152);
+  --ui-success-solid: oklch(0.56 0.15 152);
+  --ui-success-soft: oklch(0.955 0.03 152);
+  --ui-success-line: oklch(0.86 0.07 152);
+
+  /* Жовтий — найсвітліший із станових відтінків: щоб текст бейджа тримав
+     4.5:1 на власному тлі, доводиться брати помітно темніший тон, ніж
+     здається достатнім на око. */
+  --ui-warn: oklch(0.46 0.11 75);
+  --ui-warn-solid: oklch(0.7 0.16 75);
+  --ui-warn-soft: oklch(0.96 0.035 85);
+  --ui-warn-line: oklch(0.87 0.08 80);
+
+  --ui-danger: oklch(0.51 0.19 25);
+  --ui-danger-solid: oklch(0.58 0.21 25);
+  --ui-danger-soft: oklch(0.962 0.02 25);
+  --ui-danger-line: oklch(0.88 0.06 25);
+
+  --ui-info: oklch(0.5 0.13 240);
+  --ui-info-solid: oklch(0.6 0.15 240);
+  --ui-info-soft: oklch(0.958 0.025 240);
+  --ui-info-line: oklch(0.87 0.06 240);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Не інверсія світлої теми, а окремі приглушені тони — інверсія дає
+     перенасичені кольори й провалений контраст (правило color-dark-mode). */
+  --ui-canvas: oklch(0.165 0.004 95);
+  --ui-surface: oklch(0.207 0.005 95);
+  --ui-inset: oklch(0.145 0.004 95);
+  --ui-hover: oklch(0.25 0.005 95);
+
+  --ui-line: oklch(0.285 0.005 95);
+  --ui-line-strong: oklch(0.5 0.006 95);
+
+  --ui-fg: oklch(0.965 0.003 95);
+  --ui-muted: oklch(0.8 0.006 95);
+  --ui-subtle: oklch(0.7 0.006 95);
+  --ui-faint: oklch(0.44 0.006 95);
+
+  /*
+   * Тоновані фони (-soft) тут темніші, ніж «дзеркальні» до світлої теми.
+   * Причина: на них лежить текст бейджів у 11px, і саме ця пара —
+   * найтісніша в усій палітрі. Світліший фон читався б добре на око,
+   * але провалював 4.5:1 для дрібного кегля.
+   */
+  --ui-accent: oklch(0.74 0.15 277);
+  --ui-accent-solid: oklch(0.55 0.2 277);
+  --ui-accent-solid-hover: oklch(0.61 0.19 277);
+  --ui-accent-ink: oklch(0.99 0.004 277);
+  --ui-accent-soft: oklch(0.255 0.05 277);
+  --ui-accent-line: oklch(0.4 0.095 277);
+
+  --ui-success: oklch(0.81 0.15 158);
+  --ui-success-solid: oklch(0.7 0.16 158);
+  --ui-success-soft: oklch(0.25 0.04 158);
+  --ui-success-line: oklch(0.38 0.07 158);
+
+  --ui-warn: oklch(0.85 0.14 85);
+  --ui-warn-solid: oklch(0.78 0.16 80);
+  --ui-warn-soft: oklch(0.26 0.04 85);
+  --ui-warn-line: oklch(0.4 0.07 85);
+
+  /* Червоний має найнижчу світність при однаковому L, тому тут найбільший
+     розрив між текстом і фоном із усіх станів. */
+  --ui-danger: oklch(0.79 0.15 25);
+  --ui-danger-solid: oklch(0.65 0.2 25);
+  --ui-danger-soft: oklch(0.25 0.055 25);
+  --ui-danger-line: oklch(0.4 0.1 25);
+
+  --ui-info: oklch(0.81 0.12 235);
+  --ui-info-solid: oklch(0.7 0.14 238);
+  --ui-info-soft: oklch(0.255 0.045 238);
+  --ui-info-line: oklch(0.4 0.08 238);
+}
+
+@theme inline {
+  --color-canvas: var(--ui-canvas);
+  --color-surface: var(--ui-surface);
+  --color-inset: var(--ui-inset);
+  --color-hover: var(--ui-hover);
+
+  --color-line: var(--ui-line);
+  --color-line-strong: var(--ui-line-strong);
+
+  --color-fg: var(--ui-fg);
+  --color-muted: var(--ui-muted);
+  --color-subtle: var(--ui-subtle);
+  --color-faint: var(--ui-faint);
+
+  --color-accent: var(--ui-accent);
+  --color-accent-solid: var(--ui-accent-solid);
+  --color-accent-solid-hover: var(--ui-accent-solid-hover);
+  --color-accent-ink: var(--ui-accent-ink);
+  --color-accent-soft: var(--ui-accent-soft);
+  --color-accent-line: var(--ui-accent-line);
+
+  --color-success: var(--ui-success);
+  --color-success-solid: var(--ui-success-solid);
+  --color-success-soft: var(--ui-success-soft);
+  --color-success-line: var(--ui-success-line);
+
+  --color-warn: var(--ui-warn);
+  --color-warn-solid: var(--ui-warn-solid);
+  --color-warn-soft: var(--ui-warn-soft);
+  --color-warn-line: var(--ui-warn-line);
+
+  --color-danger: var(--ui-danger);
+  --color-danger-solid: var(--ui-danger-solid);
+  --color-danger-soft: var(--ui-danger-soft);
+  --color-danger-line: var(--ui-danger-line);
+
+  --color-info: var(--ui-info);
+  --color-info-solid: var(--ui-info-solid);
+  --color-info-soft: var(--ui-info-soft);
+  --color-info-line: var(--ui-info-line);
+}
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", "SF Mono",
+    monospace;
+
+  /* Дрібний службовий кегль (мета-рядки, підписи метрик). Був розсипаний по
+     розмітці як text-[11px] — тепер один токен, який можна змінити разом. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1.45;
+
+  /* Радіуси менші за дефолтні: щільна editorial-геометрія замість «м'яких» карток. */
+  --radius-card: 0.375rem;
+  --radius-control: 0.3125rem;
+  --radius-inset: 0.25rem;
+}
+
+@layer base {
+  /*
+   * Tailwind v4 у своєму preflight ставить кнопкам cursor: default —
+   * на відміну від v3. Повертаємо вказівник глобально, щоб це не залежало
+   * від того, чи не забули клас на конкретній кнопці.
+   */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary,
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
+  /*
+   * Фокус — один глобальний ринг замість focus:outline-none на кожному інпуті.
+   * Раніше фокус на полях читався лише зміною кольору рамки: для клавіатурної
+   * навігації цього мало (правило focus-states).
+   */
+  :focus-visible {
+    outline: 2px solid var(--ui-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-inset);
+  }
+
+  /* Прибирає 300ms затримку тапу на мобільних, не ламаючи pinch-zoom. */
+  a,
+  button,
+  [role="button"],
+  label,
+  summary {
+    touch-action: manipulation;
+  }
+
+  body {
+    @apply bg-canvas text-fg font-sans antialiased;
+  }
+
+  /* Заголовки: щільніший трекінг — основа editorial-вигляду. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    letter-spacing: -0.014em;
+  }
+}
+
+/*
+ * prefers-reduced-motion: гасимо переходи, але спінер лише сповільнюємо.
+ * Він — єдиний індикатор того, що запит ще виконується; зупинений спінер
+ * читався б як «зависло».
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-spin {
+    animation-duration: 1.8s !important;
+  }
+}
+
+/* ── Спільні примітиви ───────────────────────────────────────────────────── */
+
+@utility card {
+  @apply rounded-card border border-line bg-surface;
+}
+
+/**
+ * Заглиблена площина всередині картки: метрики, таблиці, службовий текст.
+ * Назва не «inset-panel» навмисно — Tailwind має власне сімейство inset-*
+ * для позиціонування, і збіг префікса створює непотрібну двозначність.
+ */
+@utility panel {
+  @apply rounded-inset border border-line bg-inset;
+}
+
+/** Цифри у колонках і діапазонах не мають «стрибати» при зміні значення. */
+@utility num {
+  @apply font-mono tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+@utility btn {
+  @apply inline-flex shrink-0 items-center justify-center gap-2 rounded-control
+    px-4 py-2 text-sm font-medium transition-[background-color,border-color,color]
+    duration-150 ease-out
+    disabled:cursor-not-allowed disabled:opacity-45;
+}
+
+@utility btn-primary {
+  @apply btn bg-accent-solid text-accent-ink
+    hover:not-disabled:bg-accent-solid-hover;
+}
+
+@utility btn-ghost {
+  @apply btn border border-line-strong text-muted
+    hover:not-disabled:bg-hover hover:not-disabled:text-fg;
+}
+
+/** Дрібна другорядна дія без рамки (перезапустити, видалити). */
+@utility btn-quiet {
+  @apply btn px-2.5 py-1.5 text-xs font-normal text-subtle
+    hover:not-disabled:bg-hover hover:not-disabled:text-fg;
+}
+
+@utility input {
+  /* 16px на мобільних навмисно: iOS зумить сторінку на будь-якому полі
+     дрібніше 16px, і повернути масштаб користувач уже не може. */
+  @apply w-full rounded-control border border-line-strong bg-inset px-3 py-2
+    text-base text-fg transition-colors duration-150 ease-out
+    placeholder:text-subtle
+    focus:border-accent
+    sm:text-sm;
+}

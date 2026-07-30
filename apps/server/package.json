@@ -1,0 +1,35 @@
+{
+  "name": "@brief/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nitro dev --port 3000",
+    "build": "nitro build",
+    "preview": "node .output/server/index.mjs",
+    "prepare": "nitro prepare",
+    "typecheck": "nitro prepare && tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "@brief/shared": "workspace:*",
+    "@google/genai": "^2.13.0",
+    "@mozilla/readability": "^0.6.0",
+    "@supabase/supabase-js": "^2.111.0",
+    "cheerio": "^1.2.0",
+    "h3": "^1.15.11",
+    "hono": "^4.12.32",
+    "jose": "^6.2.4",
+    "jsdom": "^28.0.0",
+    "openai": "^7.0.0",
+    "playwright-core": "^1.58.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^28.0.3",
+    "@types/node": "^26.1.2",
+    "domhandler": "^5.0.3",
+    "nitropack": "^2.13.4",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.output/
+.nitro/
+.vercel/
+.data/
+*.local
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.vite/
+coverage/
+supabase/.branches/
+supabase/.temp/

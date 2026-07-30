@@ -1,0 +1,22 @@
+{
+  "name": "ai-seo-brief-builder",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.6.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter \"./apps/*\" dev",
+    "dev:web": "pnpm --filter @brief/web dev",
+    "dev:server": "pnpm --filter @brief/server dev",
+    "build": "pnpm --filter @brief/web build && pnpm --filter @brief/server build",
+    "preview": "pnpm --filter @brief/server preview",
+    "typecheck": "pnpm -r typecheck",
+    "clean": "pnpm -r exec node -e \"require('fs').rmSync('node_modules',{recursive:true,force:true})\""
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

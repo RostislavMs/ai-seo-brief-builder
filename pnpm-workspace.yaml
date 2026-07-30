@@ -1,0 +1,11 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm за замовчуванням блокує postinstall-скрипти залежностей.
+# Ці три потрібні для роботи: esbuild ставить бінарник,
+# protobufjs/genai — свої внутрішні перевірки.
+allowBuilds:
+  "@google/genai": true
+  esbuild: true
+  protobufjs: true

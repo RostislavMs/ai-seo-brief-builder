@@ -1,0 +1,31 @@
+interface InstructionProps {
+  /**
+   * Тип допускає undefined навмисно: у localStorage можуть лежати дані,
+   * записані попередньою версією формату, де цього поля не існувало.
+   * Міграція такі сесії виправляє, але падати з чорним екраном
+   * компонент не має права.
+   */
+  text: string | undefined;
+}
+
+/**
+ * Інструкція для райтера — англійською. Візуально відокремлена навмисно:
+ * і в ТЗ, і в звіті порівняння співіснують дві мови — англійські інструкції
+ * та контент мовою конкурентів, — і без розділення їх легко переплутати.
+ *
+ * Живе в ui/, а не в components/brief/, саме тому, що використовується обома
+ * сценаріями: та сама межа між мовами має виглядати однаково в обох.
+ */
+export function Instruction({ text }: InstructionProps) {
+  if (!text?.trim()) return null;
+
+  return (
+    <p
+      lang="en"
+      className="rounded-r-inset border-l-2 border-accent-line bg-accent-soft
+        py-1.5 pr-2 pl-3 text-xs leading-relaxed text-fg"
+    >
+      {text}
+    </p>
+  );
+}
