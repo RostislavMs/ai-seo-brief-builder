@@ -2,6 +2,14 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
+  /**
+   * Порада під заголовком. Замовчування розраховане на сторінки застосунку;
+   * публічній версії сесії потрібна інша — її читач не має ні списку сесій,
+   * ні кнопки «згенерувати ТЗ».
+   */
+  description?: string;
+  /** false — прибирає посилання на список сесій (для сторінок без входу). */
+  homeLink?: boolean;
 }
 
 interface ErrorBoundaryState {
@@ -36,7 +44,9 @@ export class ErrorBoundary extends Component<
 
   override render(): ReactNode {
     const { error } = this.state;
-    if (!error) return this.props.children;
+    const { children, description, homeLink = true } = this.props;
+
+    if (!error) return children;
 
     return (
       <div className="card space-y-4 p-4 sm:p-6" role="alert">
@@ -45,8 +55,9 @@ export class ErrorBoundary extends Component<
             Щось зламалося під час відображення
           </h2>
           <p className="mt-1 text-sm leading-relaxed text-subtle">
-            Решта застосунку працює. Якщо це стара сесія, найпростіше —
-            згенерувати ТЗ заново.
+            {description ??
+              "Решта застосунку працює. Якщо це стара сесія, найпростіше — " +
+                "згенерувати ТЗ заново."}
           </p>
         </div>
 
@@ -58,9 +69,11 @@ export class ErrorBoundary extends Component<
           <button type="button" className="btn-ghost" onClick={this.reset}>
             Спробувати ще раз
           </button>
-          <a href="/" className="btn-ghost">
-            До списку сесій
-          </a>
+          {homeLink && (
+            <a href="/" className="btn-ghost">
+              До списку сесій
+            </a>
+          )}
         </div>
       </div>
     );

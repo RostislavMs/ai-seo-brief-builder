@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
+import { isUsable, readyCount } from "@brief/shared";
 import { AnalysisPanel } from "../components/analysis/AnalysisPanel";
 import { BriefPanel } from "../components/brief/BriefPanel";
 import { ChatPanel } from "../components/chat/ChatPanel";
 import { ComparePanel } from "../components/compare/ComparePanel";
+import { SharePanel } from "../components/share/SharePanel";
 import { Callout } from "../components/ui/Callout";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Spinner } from "../components/ui/Spinner";
-import { isUsable, readyCount } from "../lib/analyses";
+import { TabBar } from "../components/ui/TabBar";
 import { formatDateTime } from "../lib/format";
 import { readJson, writeJson } from "../lib/storage";
 import { useSession } from "../hooks/useSession";
@@ -41,6 +43,7 @@ export function SessionPage() {
     chatState,
     ownPageState,
     comparisonState,
+    shareState,
     runAnalysis,
     runBrief,
     sendMessage,
@@ -50,6 +53,8 @@ export function SessionPage() {
     runOwnAnalysis,
     removeOwnPage,
     runComparison,
+    publish,
+    unpublish,
   } = useSession(id);
 
   const [tab, setTab] = useState<Tab>("analysis");
@@ -152,6 +157,19 @@ export function SessionPage() {
     session.comparison !== null &&
     lastAnalyzedAt > Date.parse(session.comparison.comparedAt);
 
+  /**
+   * Опубліковане відстало від робочого.
+   *
+   * Порівнюється `updatedAt` сесії з тим, який був на момент зліпка, — тобто
+   * будь-яка зміна в сесії робить публічну версію застарілою. Точніше тут не
+   * треба: усе, що змінює `updatedAt`, змінює й те, що пішло б у зліпок, а
+   * дрібніший облік («ТЗ те саме, змінилася лише мова») давав би повідомлення,
+   * яке іноді бреше.
+   */
+  const staleShare =
+    session.share !== null &&
+    Date.parse(session.updatedAt) > Date.parse(session.share.capturedAt);
+
   /** Бейджі вкладок одним місцем: чотири вкладені тернарники не читаються. */
   const badges: Record<Tab, string | null> = {
     analysis: parsedCount > 0 ? String(parsedCount) : null,
@@ -190,6 +208,25 @@ export function SessionPage() {
           створено {formatDateTime(session.createdAt)} · оновлено{" "}
           {formatDateTime(session.updatedAt)}
         </p>
+
+        {/* У шапці, а не всередині вкладки: публікується сесія цілком, і
+            шукати цю дію в «SEO ТЗ» довелося б тому, хто вирішив поділитися
+            ще й аналізом. */}
+        <div className="mt-3">
+          <SharePanel
+            share={session.share}
+            state={shareState}
+            stale={staleShare}
+            hasBrief={session.brief !== null}
+            readyPages={usableCount}
+            hasOwnPage={
+              session.ownPage?.status === "success" ||
+              session.comparison !== null
+            }
+            onPublish={(sections) => void publish(sections)}
+            onUnpublish={() => void unpublish()}
+          />
+        </div>
       </div>
 
       {session.legacyBriefRemoved && (
@@ -201,42 +238,11 @@ export function SessionPage() {
         </Callout>
       )}
 
-      {/* overflow-x-auto: три вкладки з бейджами не влазять у 320px,
-          і горизонтальна прокрутка тут краща за перенос рядка. */}
-      <div className="-mx-4 overflow-x-auto border-b border-line px-4 sm:mx-0 sm:px-0">
-        <div className="flex min-w-max gap-1">
-          {TABS.map((item) => {
-            const active = tab === item.id;
-            const badge = badges[item.id];
-
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setTab(item.id)}
-                aria-current={active ? "true" : undefined}
-                className={`-mb-px shrink-0 border-b-2 px-3.5 py-2.5 text-sm
-                  transition-colors duration-150 ease-out sm:px-4 ${
-                    active
-                      ? "border-accent font-medium text-fg"
-                      : "border-transparent text-subtle hover:border-line-strong hover:text-fg"
-                  }`}
-              >
-                {item.label}
-                {badge && (
-                  <span
-                    className={`num ml-1.5 text-2xs ${
-                      active ? "text-accent" : "text-subtle"
-                    }`}
-                  >
-                    {badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <TabBar
+        items={TABS.map((item) => ({ ...item, badge: badges[item.id] }))}
+        active={tab}
+        onSelect={setTab}
+      />
 
       {tab === "analysis" && (
         <AnalysisPanel

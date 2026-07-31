@@ -46,6 +46,26 @@ export function isSupabaseConfigured(config: AppConfig): boolean {
   return Boolean(config.supabaseUrl && config.supabaseSecretKey);
 }
 
+/**
+ * Таблиці немає — типова ситуація на свіжому проєкті Supabase або коли
+ * виконали не всі міграції. PostgREST не бачить таблицю у своєму кеші схеми
+ * й віддає PGRST205, а не звичний код Postgres 42P01.
+ *
+ * Окремою функцією, бо не кожне таке читання має валити запит: публічна версія
+ * сесії живе в таблиці з останньої міграції, і її відсутність не причина
+ * ламати читання самої сесії.
+ */
+export function isMissingTable(error: {
+  message: string;
+  code?: string;
+}): boolean {
+  return (
+    error.code === "42P01" ||
+    error.code === "PGRST205" ||
+    /could not find the table|does not exist/i.test(error.message)
+  );
+}
+
 /** Перетворює помилку PostgREST у зрозумілу користувачеві. */
 export function throwDbError(
   error: { message: string; code?: string },
@@ -53,18 +73,11 @@ export function throwDbError(
 ): never {
   console.error(`[db] ${context}:`, error);
 
-  // Таблиць немає — типова ситуація на свіжому проєкті Supabase.
-  // PostgREST не бачить їх у своєму кеші схеми й віддає PGRST205,
-  // а не звичний код Postgres 42P01.
-  if (
-    error.code === "42P01" ||
-    error.code === "PGRST205" ||
-    /could not find the table|does not exist/i.test(error.message)
-  ) {
+  if (isMissingTable(error)) {
     throw new AppError(
       "db_not_migrated",
-      "Таблиці не створені. Виконайте supabase/migrations/0001_init.sql " +
-        "у SQL Editor вашого проєкту Supabase.",
+      "Потрібної таблиці немає в базі. Виконайте міграції з " +
+        "supabase/migrations/ по порядку в SQL Editor вашого проєкту Supabase.",
       503,
     );
   }

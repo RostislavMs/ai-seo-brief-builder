@@ -3,6 +3,7 @@
 import type { PageAnalysis } from "./page";
 import type { SeoBrief } from "./brief";
 import type { PageComparison } from "./comparison";
+import type { SessionShare } from "./share";
 
 export type ChatRole = "user" | "assistant";
 
@@ -47,6 +48,14 @@ export interface Session {
    * ставлять тоді, коли автовизначення помилилося.
    */
   contentLanguage: string | null;
+  /**
+   * Публічна версія сесії. `null` — сесію не публікували.
+   *
+   * Тут лише посилання й дати: сам опублікований вміст — окремий зліпок, який
+   * читається за токеном і в робочу сесію не завантажується. Він може
+   * відрізнятися від того, що зараз у сесії, — це й є суть публікації.
+   */
+  share: SessionShare | null;
   /**
    * true, якщо ТЗ було відкинуте під час приведення сесії до нового формату.
    * Прапорець зберігається, доки користувач не згенерує ТЗ заново, — інакше

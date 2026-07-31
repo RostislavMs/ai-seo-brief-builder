@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { AnalysisStatus, PageAnalysis } from "@brief/shared";
+import { isUsable, readyCount } from "@brief/shared";
 import { formatNumber, plural } from "../../lib/format";
-import { isUsable, readyCount } from "../../lib/analyses";
 import { shortenUrl } from "../../lib/url";
 import { Spinner } from "../ui/Spinner";
 import { LanguagePanel } from "./LanguagePanel";

@@ -7,6 +7,7 @@ import type { PageAnalysis, ParsedPage } from "./page";
 import type { SeoBrief } from "./brief";
 import type { PageComparison } from "./comparison";
 import type { ChatMessage, Session, SessionSummary } from "./session";
+import type { PublicShare, SessionShare, SharedSections } from "./share";
 
 /** Уніфікована помилка API. */
 export interface ApiError {
@@ -176,6 +177,30 @@ export interface CreateMessageRequest {
 
 export interface MessageResponse {
   message: ChatMessage;
+}
+
+/* ── Публічна версія сесії ────────────────────────────────────────────────── */
+
+/**
+ * PUT /api/sessions/:id/share — опублікувати або оновити публічну версію.
+ *
+ * PUT, а не POST: публічна версія в сесії одна, і повторний виклик має
+ * перезаписувати її зліпок, а не створювати друге посилання. Токен при
+ * оновленні лишається той самий — інакше «оновити публічну версію» ламало б
+ * посилання, яке вже надіслали клієнтові.
+ *
+ * Сам вміст у запит не входить: зліпок збирає сервер із сесії. Приймати його
+ * від клієнта означало б дати змогу опублікувати за своїм посиланням будь-що.
+ */
+export type PublishShareRequest = SharedSections;
+
+export interface ShareResponse {
+  share: SessionShare;
+}
+
+/** GET /api/public/shares/:token — єдиний маршрут, доступний без входу. */
+export interface PublicShareResponse {
+  share: PublicShare;
 }
 
 /** POST /api/sessions/import — перенесення сесій із localStorage в акаунт. */

@@ -16,6 +16,7 @@ import { briefRoutes } from "./routes/brief";
 import { chatRoutes } from "./routes/chat";
 import { compareRoutes } from "./routes/compare";
 import { promptRoutes } from "./routes/prompts";
+import { publicRoutes } from "./routes/public";
 import { ruleRoutes } from "./routes/rules";
 import { sessionRoutes } from "./routes/sessions";
 
@@ -23,9 +24,10 @@ import { sessionRoutes } from "./routes/sessions";
  * Hono-застосунок з усім API. Nitro лише хостить його
  * (див. routes/api/[...].ts) — уся маршрутизація тут.
  *
- * Публічний лише /health. Решта проходить через requireAuth, який
- * підключається всередині кожного роутера — так неможливо додати
- * маршрут і забути про захист.
+ * Без входу доступні тільки /health і /public/*. Решта проходить через
+ * requireAuth, який підключається всередині кожного роутера — так неможливо
+ * додати маршрут і забути про захист. Публічне зібране в один роутер із тієї
+ * самої причини, тільки з іншого боку: там доступність усім видно з файлу.
  */
 export const app = new Hono().basePath("/api");
 
@@ -41,6 +43,8 @@ app.get("/health", (c) => {
   };
   return c.json(body);
 });
+
+app.route("/public", publicRoutes);
 
 app.route("/me", meRoutes);
 app.route("/keys", keyRoutes);

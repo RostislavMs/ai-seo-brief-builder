@@ -6,6 +6,7 @@ import type {
   MessageResponse,
   SessionListResponse,
   SessionResponse,
+  ShareResponse,
 } from "@brief/shared";
 import { isLanguageCode } from "@brief/shared";
 import { getConfig } from "../config";
@@ -14,6 +15,7 @@ import { parseBody, readJson } from "../http/validate";
 import { parsedPageSchema } from "../schemas/page";
 import { seoBriefSchema } from "../services/brief/schema";
 import { pageComparisonSchema } from "../services/compare/schema";
+import { publishShare, unpublishShare } from "../services/shares/publish";
 import {
   clearOwnPage,
   createMessage,
@@ -84,6 +86,18 @@ const analysisSchema = z
   .refine((value) => Object.keys(value).length > 0, {
     message: "нема чого змінювати",
   });
+
+/**
+ * Вибір розділів для публічної версії.
+ *
+ * Самого вмісту в тілі немає навмисно: зліпок збирає сервер із сесії. Приймати
+ * його від клієнта означало б дати змогу опублікувати за своїм посиланням
+ * будь-що.
+ */
+const shareSchema = z.object({
+  analyses: z.boolean().default(false),
+  comparison: z.boolean().default(false),
+});
 
 const messageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -242,6 +256,36 @@ sessionRoutes.put("/:id/own-page", async (c) => {
 
 sessionRoutes.delete("/:id/own-page", async (c) => {
   await clearOwnPage(getConfig(), c.get("user").id, c.req.param("id"));
+  return c.body(null, 204);
+});
+
+/**
+ * Публічна версія сесії.
+ *
+ * PUT, а не POST: публічна версія в сесії одна, і повторний виклик має
+ * перезаписувати її зліпок, а не створювати друге посилання. Токен при цьому
+ * лишається той самий — інакше «оновити публічну версію» ламало б посилання,
+ * яке вже надіслали клієнтові.
+ *
+ * Сама сесія у відповіді не повертається: вона важить стільки ж, скільки весь
+ * розібраний контент, а змінюється тут лише публічна версія.
+ */
+sessionRoutes.put("/:id/share", async (c) => {
+  const body = parseBody(shareSchema, await readJson(c.req.raw));
+
+  const share = await publishShare(
+    getConfig(),
+    c.get("user").id,
+    c.req.param("id"),
+    body,
+  );
+
+  const response: ShareResponse = { share };
+  return c.json(response);
+});
+
+sessionRoutes.delete("/:id/share", async (c) => {
+  await unpublishShare(getConfig(), c.get("user").id, c.req.param("id"));
   return c.body(null, 204);
 });
 

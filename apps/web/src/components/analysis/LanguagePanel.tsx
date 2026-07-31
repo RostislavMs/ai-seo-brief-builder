@@ -5,8 +5,8 @@ import {
   detectContentLanguage,
   languageName,
   resolveContentLanguage,
+  usablePages,
 } from "@brief/shared";
-import { usablePages } from "../../lib/analyses";
 import { plural } from "../../lib/format";
 import { Badge } from "../ui/Badge";
 import { Combobox, type ComboboxOption } from "../ui/Combobox";

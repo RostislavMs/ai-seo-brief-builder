@@ -6,6 +6,7 @@ import { AppShell } from "./components/layout/AppShell";
 import { HomePage } from "./pages/HomePage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { PromptsPage } from "./pages/PromptsPage";
+import { PublicSharePage } from "./pages/PublicSharePage";
 import { RulesPage } from "./pages/RulesPage";
 import { SessionPage } from "./pages/SessionPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -54,6 +55,10 @@ export function App() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      {/* Публічна версія сесії — поза AuthenticatedArea: посилання відкривають
+          люди, яких у застосунку немає, і RequireAuth відправляв би їх на
+          /login замість ТЗ, по яке вони прийшли. */}
+      <Route path="/p/:token" element={<PublicSharePage />} />
       <Route path="*" element={<AuthenticatedArea />} />
     </Routes>
   );

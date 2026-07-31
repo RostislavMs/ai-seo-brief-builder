@@ -5,6 +5,7 @@ import type {
   ParsedPage,
   SeoBrief,
   Session,
+  SessionShare,
   SessionSummary,
 } from "@brief/shared";
 import type { AppConfig } from "../../config";
@@ -12,6 +13,7 @@ import { AppError } from "../../http/errors";
 import { supabaseAdmin, throwDbError } from "../../lib/supabase";
 import { seoBriefSchema } from "../brief/schema";
 import { pageComparisonSchema } from "../compare/schema";
+import { readShare } from "../shares/repository";
 
 /**
  * Сесії в Supabase (розділ 5 ТЗ).
@@ -120,6 +122,7 @@ function toSession(
   row: SessionRow,
   analyses: AnalysisRow[],
   messages: MessageRow[],
+  share: SessionShare | null,
 ): Session {
   // Власна сторінка лежить у тій самій таблиці, але в сесії це окреме поле:
   // у списку `analyses` вона мовчки пішла б у промпт генерації ТЗ разом
@@ -143,6 +146,10 @@ function toSession(
     // Колонка додана міграцією 0005: у сесії, прочитаній старим клієнтом
     // до її появи, значення просто немає, і це той самий «вір визначеному».
     contentLanguage: row.content_language ?? null,
+    // Лише посилання й дати. Сам опублікований зліпок сюди не тягнеться: він
+    // важить стільки ж, скільки вся сесія, а сторінці сесії потрібен не він,
+    // а відповідь «чи опубліковано і чи відстало опубліковане».
+    share,
     ...(row.legacy_brief_removed ? { legacyBriefRemoved: true } : {}),
   };
 }
@@ -240,7 +247,7 @@ export async function getSession(
   if (error) throwDbError(error, "читання сесії");
   if (!row) throw notFound();
 
-  const [analyses, messages] = await Promise.all([
+  const [analyses, messages, share] = await Promise.all([
     db
       .from("session_analyses")
       .select(ANALYSIS_COLUMNS)
@@ -253,6 +260,10 @@ export async function getSession(
       .eq("session_id", sessionId)
       .order("created_at", { ascending: true })
       .returns<MessageRow[]>(),
+    // Третім запитом, а не вкладеним select: публічна версія — окрема
+    // сутність зі своїм життєвим циклом, і вбудований join тягнув би її
+    // назву колонок у кожен insert і update сесії.
+    readShare(config, sessionId),
   ]);
 
   if (analyses.error) throwDbError(analyses.error, "читання сторінок сесії");
@@ -277,11 +288,17 @@ export async function getSession(
     },
     analyses.data ?? [],
     messages.data ?? [],
+    share,
   );
 }
 
-/** Перевірка власника без витягування вмісту — для дочірніх записів. */
-async function assertOwner(
+/**
+ * Перевірка власника без витягування вмісту — для дочірніх записів.
+ *
+ * Експортується для публікації: прибирання сесії з публічного доступу теж
+ * потребує цієї перевірки, а повна сесія йому ні до чого.
+ */
+export async function assertOwner(
   config: AppConfig,
   userId: string,
   sessionId: string,
@@ -355,7 +372,8 @@ export async function createSession(
 
   if (analysesError) throwDbError(analysesError, "створення списку сторінок");
 
-  return toSession(row, analyses ?? [], []);
+  // share: null без запиту в базу — щойно створену сесію публікувати ще нічим.
+  return toSession(row, analyses ?? [], [], null);
 }
 
 export interface UpdateSessionInput {

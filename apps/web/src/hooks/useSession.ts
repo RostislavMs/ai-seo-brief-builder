@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ChatMessage, PageAnalysis, Session } from "@brief/shared";
+import type {
+  ChatMessage,
+  PageAnalysis,
+  Session,
+  SharedSections,
+} from "@brief/shared";
+import { usablePages } from "@brief/shared";
 import { ApiRequestError } from "../lib/api";
-import { usablePages } from "../lib/analyses";
 import {
   analyzeUrl,
   requestBrief,
   requestComparison,
   sendChatMessage,
 } from "../services/analysis";
+import { publishShare, unpublishShare } from "../services/shares";
 import {
   addMessage,
   clearOwnPage,
@@ -35,6 +41,8 @@ interface UseSessionResult {
   /** Парсинг власної сторінки. Окремо від analysisState: дії різні. */
   ownPageState: TaskState;
   comparisonState: TaskState;
+  /** Публікація та її зняття — одна дія за раз, тому один стан на обидві. */
+  shareState: TaskState;
   /** Аналізує всі URL сесії заново. */
   runAnalysis: () => Promise<void>;
   /** Генерує SEO ТЗ з успішно проаналізованих сторінок. */
@@ -57,6 +65,13 @@ interface UseSessionResult {
   removeOwnPage: () => Promise<void>;
   /** Порівнює власну сторінку з конкурентами. */
   runComparison: () => Promise<void>;
+  /**
+   * Публікує сесію або оновлює вже опубліковану до поточного стану.
+   * Посилання при оновленні не змінюється.
+   */
+  publish: (sections: SharedSections) => Promise<void>;
+  /** Прибирає сесію з публічного доступу — посилання перестає працювати. */
+  unpublish: () => Promise<void>;
 }
 
 function errorMessage(error: unknown): string {
@@ -74,6 +89,7 @@ export function useSession(id: string | undefined): UseSessionResult {
   const [comparisonState, setComparisonState] = useState<TaskState>({
     status: "idle",
   });
+  const [shareState, setShareState] = useState<TaskState>({ status: "idle" });
 
   /**
    * Актуальна сесія поза циклом рендеру. Запити на URL завершуються
@@ -114,6 +130,10 @@ export function useSession(id: string | undefined): UseSessionResult {
    *
    * Запис у базу — окремо й після: він асинхронний, і чекати на нього
    * перед промальовкою означало б показувати завмерлий інтерфейс.
+   *
+   * `updatedAt` за замовчуванням стає поточним часом, але його можна перебити:
+   * публікація повертає дату, з якою зліпок звірятиметься далі, і локальний
+   * час клієнта поверх неї одразу зробив би щойно опубліковане «застарілим».
    */
   const patch = useCallback(
     (compute: (session: Session) => Partial<Session>): void => {
@@ -122,8 +142,8 @@ export function useSession(id: string | undefined): UseSessionResult {
 
       const next: Session = {
         ...existing,
-        ...compute(existing),
         updatedAt: new Date().toISOString(),
+        ...compute(existing),
       };
 
       current.current = next;
@@ -364,6 +384,49 @@ export function useSession(id: string | undefined): UseSessionResult {
     }
   }, [patch]);
 
+  /**
+   * Публікація сесії.
+   *
+   * Разом із посиланням локально виставляється `updatedAt` із відповіді:
+   * сервер зробив зліпок із сесії, яку бачить база, і саме її дата означає
+   * «опубліковане відповідає робочому». Поточний час клієнта на цьому місці
+   * робив би щойно опубліковану версію застарілою в ту саму мить.
+   */
+  const publish = useCallback(
+    async (sections: SharedSections): Promise<void> => {
+      const existing = current.current;
+      if (!existing) return;
+
+      setShareState({ status: "running" });
+
+      try {
+        const share = await publishShare(existing.id, sections);
+        patch(() => ({ share, updatedAt: share.capturedAt }));
+        setShareState({ status: "idle" });
+      } catch (error) {
+        setShareState({ status: "error", message: errorMessage(error) });
+      }
+    },
+    [patch],
+  );
+
+  const unpublish = useCallback(async (): Promise<void> => {
+    const existing = current.current;
+    if (!existing?.share) return;
+
+    const previous = existing.share;
+
+    // Прибирається одразу, без очікування: посилання перестало діяти —
+    // це подія, а не процес. Помилка повертає стан назад.
+    patch(() => ({ share: null }));
+    setShareState({ status: "idle" });
+
+    await unpublishShare(existing.id).catch((error: unknown) => {
+      patch(() => ({ share: previous }));
+      setShareState({ status: "error", message: errorMessage(error) });
+    });
+  }, [patch]);
+
   const sendMessage = useCallback(
     async (text: string): Promise<void> => {
       const existing = current.current;
@@ -518,6 +581,7 @@ export function useSession(id: string | undefined): UseSessionResult {
     chatState,
     ownPageState,
     comparisonState,
+    shareState,
     runAnalysis,
     runBrief,
     sendMessage,
@@ -528,5 +592,7 @@ export function useSession(id: string | undefined): UseSessionResult {
     runOwnAnalysis,
     removeOwnPage,
     runComparison,
+    publish,
+    unpublish,
   };
 }

@@ -2,11 +2,13 @@ export type * from "./types/page";
 export type * from "./types/brief";
 export type * from "./types/comparison";
 export type * from "./types/session";
+export type * from "./types/share";
 export type * from "./types/api";
 export type * from "./types/account";
 export type * from "./types/rules";
 export type * from "./types/prompts";
 
+export { isUsable, readyCount, usablePages } from "./utils/analyses";
 export { groupHeadings, outlineToText } from "./utils/headings";
 export { formatRange, normalizeRange, sumRanges } from "./utils/range";
 export { median } from "./utils/stats";
