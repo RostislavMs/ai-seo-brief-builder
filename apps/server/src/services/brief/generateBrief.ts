@@ -14,7 +14,7 @@ import {
   sumRanges,
 } from "@brief/shared";
 import { AppError } from "../../http/errors";
-import type { AiProvider } from "../ai";
+import { requestJson, type AiProvider } from "../ai";
 import type { PromptSet } from "../prompts/repository";
 import { buildPagesPayload, medianWordCount } from "./payload";
 import { briefSystemPrompt, briefUserPrompt } from "./prompts";
@@ -76,51 +76,44 @@ export async function generateBrief(
   const rules = await input.loadRules(language.code);
   const payload = buildPagesPayload(pages);
 
-  const response = await provider.generateJson({
-    system: briefSystemPrompt({
-      language: language.name,
-      rules,
-      prompts: input.prompts,
-    }),
-    messages: [
-      {
-        role: "user",
-        content: briefUserPrompt({
-          topic: input.topic,
-          pagesJson: payload.json,
-          pageCount: payload.pageCount,
-          medianWords: medianWordCount(pages),
-          detectedLanguage: language.name,
-          prompts: input.prompts,
-        }),
-      },
-    ],
-    responseSchema: toResponseSchema(),
-    temperature: 0.4,
-  });
+  const response = await requestJson(
+    provider,
+    {
+      system: briefSystemPrompt({
+        language: language.name,
+        rules,
+        prompts: input.prompts,
+      }),
+      messages: [
+        {
+          role: "user",
+          content: briefUserPrompt({
+            topic: input.topic,
+            pagesJson: payload.json,
+            pageCount: payload.pageCount,
+            medianWords: medianWordCount(pages),
+            detectedLanguage: language.name,
+            prompts: input.prompts,
+          }),
+        },
+      ],
+      responseSchema: toResponseSchema(),
+      temperature: 0.4,
+    },
+    seoBriefSchema,
+  );
 
   console.info(
     `[brief] ${provider.name}/${response.model} · мова ${language.name}` +
       `${language.overridden ? ` (вручну, визначено ${detected.name})` : ""} · ` +
       `правил ${rules.global.length}+${rules.language.length} · ` +
       `сторінок ${payload.pageCount} · промпт ${payload.chars} симв. · ` +
-      `токени ${response.usage.inputTokens ?? "?"}→${response.usage.outputTokens ?? "?"}`,
+      `токени ${response.usage.inputTokens ?? "?"}→${response.usage.outputTokens ?? "?"}` +
+      `${response.attempts > 1 ? ` · спроб ${response.attempts}` : ""}`,
   );
 
-  const parsed = seoBriefSchema.safeParse(response.data);
-
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    throw new AppError(
-      "ai_schema_mismatch",
-      `Модель повернула структуру, що не відповідає схемі: ` +
-        `${issue?.path.join(".") || "корінь"} — ${issue?.message ?? "невідома причина"}`,
-      502,
-    );
-  }
-
   return {
-    ...normalizeBrief(parsed.data),
+    ...normalizeBrief(response.data),
     // Назву мови ставимо свою, а не ту, що повернула модель: за нею потім
     // шукаються правила для правок у чаті, і «Brazilian Portuguese» замість
     // «Portuguese» тихо лишило б наступну правку без правил.

@@ -5,7 +5,7 @@ import type {
   SeoBrief,
 } from "@brief/shared";
 import { AppError } from "../../http/errors";
-import type { AiMessage, AiProvider } from "../ai";
+import { requestJson, type AiMessage, type AiProvider } from "../ai";
 import type { PromptSet } from "../prompts/repository";
 import { normalizeBrief } from "./generateBrief";
 import { buildCompactPagesPayload } from "./payload";
@@ -58,41 +58,34 @@ export async function editBrief(
     { role: "user" as const, content: input.message },
   ];
 
-  const response = await provider.generateJson({
-    system: chatSystemPrompt({
-      // Мова контенту зафіксована в самому брифі, тому правки її не змінюють.
-      language: input.brief.contentLanguage,
-      topic: input.topic,
-      briefJson: JSON.stringify(input.brief),
-      pagesJson: pages.json,
-      rules: input.rules,
-      prompts: input.prompts,
-    }),
-    messages,
-    responseSchema: toChatResponseSchema(),
-    // Нижча за генерацію: правка має бути точною, а не творчою.
-    temperature: 0.2,
-  });
+  const response = await requestJson(
+    provider,
+    {
+      system: chatSystemPrompt({
+        // Мова контенту зафіксована в самому брифі, тому правки її не змінюють.
+        language: input.brief.contentLanguage,
+        topic: input.topic,
+        briefJson: JSON.stringify(input.brief),
+        pagesJson: pages.json,
+        rules: input.rules,
+        prompts: input.prompts,
+      }),
+      messages,
+      responseSchema: toChatResponseSchema(),
+      // Нижча за генерацію: правка має бути точною, а не творчою.
+      temperature: 0.2,
+    },
+    chatReplySchema,
+  );
 
   console.info(
     `[chat] ${provider.name}/${response.model} · історія ${messages.length} · ` +
       `правил ${input.rules.global.length}+${input.rules.language.length} · ` +
-      `токени ${response.usage.inputTokens ?? "?"}→${response.usage.outputTokens ?? "?"}`,
+      `токени ${response.usage.inputTokens ?? "?"}→${response.usage.outputTokens ?? "?"}` +
+      `${response.attempts > 1 ? ` · спроб ${response.attempts}` : ""}`,
   );
 
-  const parsed = chatReplySchema.safeParse(response.data);
-
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    throw new AppError(
-      "ai_schema_mismatch",
-      `Модель повернула структуру, що не відповідає схемі: ` +
-        `${issue?.path.join(".") || "корінь"} — ${issue?.message ?? "невідома причина"}`,
-      502,
-    );
-  }
-
-  const { action, reply, brief } = parsed.data;
+  const { action, reply, brief } = response.data;
 
   if (action === "answer") {
     return { reply, brief: null };

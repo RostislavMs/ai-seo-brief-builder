@@ -1,14 +1,59 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { AppError } from "../../../http/errors";
+import { abortedError, AppError } from "../../../http/errors";
 import type { AiJsonRequest, AiJsonResponse, AiProvider } from "../types";
+import { toAnthropicSchema } from "./anthropicSchema";
 
 const ERROR_PREVIEW_CHARS = 300;
 
 /**
  * Стеля відповіді. ТЗ на велику статтю — це кілька десятків тисяч токенів
  * JSON, плюс адаптивне мислення рахується в цей самий ліміт.
+ *
+ * Запас навмисно щедрий: платимо за фактично згенероване, а на конкурентах
+ * із великим обсягом (зведена таблиця ключів — рядок на 20-40 слів статті)
+ * тісний ліміт обривав відповідь на середині. Sonnet 5 і Opus 5 тримають
+ * до 128K, тож 64K — усе ще половина.
  */
-const MAX_TOKENS = 32_000;
+const MAX_TOKENS = 64_000;
+
+/**
+ * Інструмент, яким модель віддає результат. Ім'я бачить лише вона сама.
+ *
+ * Схема йде інструментом, а не через output_config.format, бо строгий JSON
+ * у Claude — це компіляція схеми в граматику для constrained decoding, і
+ * схема ТЗ у неї не влазить: «The compiled grammar is too large». Дерево
+ * H2→H3→H4, десятки діапазонів і шість необов'язкових полів у кожному блоці
+ * дають надто багато варіантів, і спрощувати схему заради одного провайдера
+ * означало б зіпсувати ТЗ для решти.
+ *
+ * Виклик інструмента граматику не компілює, а результат приходить уже
+ * розібраним об'єктом — надійніше за розбір тексту, бо обрізаний JSON тут
+ * неможливий. Відповідність схемі перевіряє zod у викликачі — так само, як
+ * для OpenAI, де strict вимкнений з тієї ж причини.
+ */
+const RESULT_TOOL = "emit_result";
+
+/**
+ * Чи розуміє модель adaptive-мислення.
+ *
+ * Воно з'явилося в 4.6, і старіші моделі — Haiku 4.5 з каталогу, Sonnet 4.5,
+ * уся лінійка 3.x — цей параметр відхиляють, а не ігнорують. Номер покоління
+ * розбираємо з id, а не тримаємо перелік тих, хто вміє: перелік старих моделей
+ * більше не зростає, а нових додавали б щоразу вручну.
+ */
+function supportsAdaptiveThinking(model: string): boolean {
+  // Дата знімка тільки заплутує розбір: claude-haiku-4-5-20251001 → 4.5.
+  const version = /(\d+)(?:[.-](\d+))?/.exec(model.replace(/-\d{8}$/, ""));
+
+  // Ім'я без номера — це прев'ю на кшталт claude-mythos-preview, тобто
+  // завжди свіжа модель.
+  if (!version) return true;
+
+  const major = Number(version[1]);
+  const minor = Number(version[2] ?? 0);
+
+  return major > 4 || (major === 4 && minor >= 6);
+}
 
 export class AnthropicProvider implements AiProvider {
   readonly name = "anthropic";
@@ -18,12 +63,24 @@ export class AnthropicProvider implements AiProvider {
   constructor(
     apiKey: string,
     readonly model: string,
+    /**
+     * Сигнал розриву HTTP-запиту користувача.
+     *
+     * У конструкторі, а не в generateJson: провайдер створюється на один
+     * запит, тому термін життя сигналу рівно той самий — а бізнес-логіка
+     * (generateBrief і решта) лишається без жодного знання про HTTP.
+     *
+     * Тут він справді обриває генерацію, а не лише очікування: відповідь
+     * приймається стрімом, тож закрите зʼєднання зупиняє модель, і токени
+     * за ненадіслану решту не списуються.
+     */
+    private readonly signal?: AbortSignal,
   ) {
     this.client = new Anthropic({ apiKey });
   }
 
   async generateJson(request: AiJsonRequest): Promise<AiJsonResponse> {
-    let text: string | undefined;
+    let data: unknown;
     let usage: AiJsonResponse["usage"] = { inputTokens: null, outputTokens: null };
 
     try {
@@ -42,17 +99,33 @@ export class AnthropicProvider implements AiProvider {
           // Адаптивне мислення: моделі 4.6+ самі вирішують глибину.
           // display: "omitted" — міркування нам не потрібні, а їх текст
           // помітно роздуває відповідь.
-          thinking: { type: "adaptive", display: "omitted" },
-          output_config: {
-            format: {
-              type: "json_schema",
-              schema: request.responseSchema as Record<string, unknown>,
+          ...(supportsAdaptiveThinking(this.model)
+            ? { thinking: { type: "adaptive" as const, display: "omitted" as const } }
+            : {}),
+          tools: [
+            {
+              name: RESULT_TOOL,
+              // Про порожні поля сказано прямо: без граматики модель радше
+              // пропустить поле, яке в цьому місці ні до чого (items у блоці
+              // highlight), ніж надішле його порожнім.
+              description:
+                "Return the result. Call this tool exactly once and include " +
+                "every field the schema lists as required — where a field " +
+                "does not apply, send an empty array or an empty string " +
+                "instead of omitting it.",
+              // Схему чистимо від обмежень, яких Anthropic не приймає:
+              // вони нічого не додають (z.number().int() дописує межі
+              // безпечного цілого), лише витрачають токени — і зламали б
+              // запит, якби строгий режим колись увімкнули.
+              input_schema: toAnthropicSchema(request.responseSchema),
             },
-          },
+          ],
+          // Без примусу модель могла б відповісти текстом замість виклику.
+          tool_choice: { type: "tool", name: RESULT_TOOL },
           // temperature свідомо не передається: Opus 5, Opus 4.8 і Sonnet 5
-          // відхиляють параметри семплінгу з 400. Формат тут і так жорстко
-          // заданий схемою, тож керувати «творчістю» нема потреби.
-        })
+          // відхиляють параметри семплінгу з 400. Форму відповіді задає схема
+          // інструмента, тож керувати «творчістю» нема потреби.
+        }, { signal: this.signal })
         .finalMessage();
 
       if (message.stop_reason === "refusal") {
@@ -73,10 +146,21 @@ export class AnthropicProvider implements AiProvider {
         );
       }
 
-      text = message.content
-        .filter((block) => block.type === "text")
-        .map((block) => block.text)
-        .join("");
+      const result = message.content.find(
+        (block) => block.type === "tool_use" && block.name === RESULT_TOOL,
+      );
+
+      if (!result || result.type !== "tool_use") {
+        throw new AppError(
+          "ai_empty_response",
+          "Модель не повернула результат. Спробуйте ще раз.",
+          502,
+        );
+      }
+
+      // Аргументи інструмента SDK віддає вже розібраними — розбирати текст,
+      // як для інших провайдерів, тут не доводиться.
+      data = result.input;
 
       usage = {
         inputTokens: message.usage.input_tokens,
@@ -87,27 +171,15 @@ export class AnthropicProvider implements AiProvider {
       throw toAiError(error);
     }
 
-    if (!text.trim()) {
-      throw new AppError(
-        "ai_empty_response",
-        "Модель повернула порожню відповідь. Спробуйте ще раз.",
-        502,
-      );
-    }
-
-    try {
-      return { data: JSON.parse(text) as unknown, usage, model: this.model };
-    } catch {
-      throw new AppError(
-        "ai_invalid_json",
-        `Модель повернула не JSON: ${text.slice(0, ERROR_PREVIEW_CHARS)}`,
-        502,
-      );
-    }
+    return { data, usage, model: this.model };
   }
 }
 
 function toAiError(error: unknown): AppError {
+  // Обрив із боку клієнта — перший, бо це не помилка провайдера й ні логів,
+  // ні поради користувачеві не потребує.
+  if (error instanceof Anthropic.APIUserAbortError) return abortedError();
+
   if (error instanceof Anthropic.AuthenticationError) {
     return new AppError(
       "ai_auth_error",
@@ -134,14 +206,19 @@ function toAiError(error: unknown): AppError {
 
   const message = error instanceof Error ? error.message : String(error);
 
-  // Структуровану відповідь підтримують не всі моделі Claude. Каталог
-  // пропонує лише сумісні, але користувач міг обрати модель зі списку,
-  // отриманого від API, — тоді підказка має бути конкретною.
-  if (/output_config|json_schema|structured/i.test(message)) {
+  // Окремої підказки про формат відповіді тут навмисно немає. Виклик
+  // інструмента вміють усі моделі, які взагалі варто вибирати, а правило
+  // «згадано json_schema — значить, змініть модель» ловило й 400 через нашу
+  // власну схему: користувач бачив пораду, яка нічого не змінювала, а
+  // справжня причина не доходила ні сюди, ні в логи.
+  //
+  // Тому будь-який 400 повертаємо як є: це майже завжди наш запит, а не
+  // вибір користувача, і причина потрібна одразу — ТЗ уже не згенерувалося.
+  if (error instanceof Anthropic.BadRequestError) {
+    console.error("[ai:anthropic] Anthropic відхилив запит:", error);
     return new AppError(
-      "ai_schema_unsupported",
-      "Ця модель Claude не підтримує строгий JSON-формат відповіді. " +
-        "Оберіть модель із міткою в налаштуваннях (Opus 5, Sonnet 5, Haiku 4.5).",
+      "ai_bad_request",
+      `Anthropic відхилив запит: ${message.slice(0, ERROR_PREVIEW_CHARS)}`,
       502,
     );
   }

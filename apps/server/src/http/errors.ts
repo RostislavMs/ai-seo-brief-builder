@@ -20,3 +20,14 @@ export class AppError extends Error {
 export function toApiError(code: string, message: string): ApiError {
   return { error: { code, message } };
 }
+
+/**
+ * Користувач обірвав запит: натиснув «Скасувати» або пішов зі сторінки.
+ *
+ * Не збій, тому окремий код і жодного запису в лог. Статус тут майже
+ * формальність — адресата відповіді вже немає; 499, яким nginx позначає
+ * закрите клієнтом зʼєднання, типи Hono не приймають, тому лишається 400.
+ */
+export function abortedError(): AppError {
+  return new AppError("request_aborted", "Запит скасовано.", 400);
+}

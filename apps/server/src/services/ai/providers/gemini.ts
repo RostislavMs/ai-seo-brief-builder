@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { AppError } from "../../../http/errors";
+import { abortedError, AppError } from "../../../http/errors";
 import type { AiJsonRequest, AiJsonResponse, AiProvider } from "../types";
 
 /** Скільки символів відповіді показувати в помилці розбору. */
@@ -13,6 +13,15 @@ export class GeminiProvider implements AiProvider {
   constructor(
     apiKey: string,
     readonly model: string,
+    /**
+     * Сигнал розриву HTTP-запиту користувача — як і в решти провайдерів.
+     *
+     * Google про свій abortSignal попереджає прямо: він скасовує лише
+     * очікування на боці клієнта, а не роботу сервісу, і токени спишуться
+     * повністю. Передаємо все одно — звільнити зʼєднання й не тримати
+     * функцію Nitro теж варто.
+     */
+    private readonly signal?: AbortSignal,
   ) {
     this.client = new GoogleGenAI({ apiKey });
   }
@@ -20,6 +29,12 @@ export class GeminiProvider implements AiProvider {
   async generateJson(request: AiJsonRequest): Promise<AiJsonResponse> {
     let text: string | undefined;
     let usage: AiJsonResponse["usage"] = { inputTokens: null, outputTokens: null };
+
+    // SDK Google підписується на майбутній обрив, але вже обірваний сигнал
+    // не перевіряє — і надсилає запит попри нього. Помітно це в другій спробі
+    // requestJson(), якщо скасувати між спробами: у Anthropic і OpenAI їхні
+    // SDK такий запит навіть не відправляють, а тут заплатили б за нього.
+    if (this.signal?.aborted) throw abortedError();
 
     try {
       const response = await this.client.models.generateContent({
@@ -34,6 +49,7 @@ export class GeminiProvider implements AiProvider {
           responseMimeType: "application/json",
           responseJsonSchema: request.responseSchema,
           temperature: request.temperature ?? 0.4,
+          ...(this.signal ? { abortSignal: this.signal } : {}),
         },
       });
 
@@ -69,6 +85,12 @@ export class GeminiProvider implements AiProvider {
 /** Перекладає помилки SDK у зрозумілі користувачеві повідомлення. */
 function toAiError(error: unknown): AppError {
   const message = error instanceof Error ? error.message : String(error);
+
+  // Типізованого класу для обриву в цьому SDK немає, тому по імені винятку:
+  // AbortError кидає сам fetch, коли signal спрацював.
+  if (error instanceof Error && error.name === "AbortError") {
+    return abortedError();
+  }
 
   if (/api[_ ]?key|API_KEY_INVALID|permission|401|403/i.test(message)) {
     return new AppError(

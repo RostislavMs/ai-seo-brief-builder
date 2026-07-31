@@ -3,7 +3,7 @@ import type { TaskState } from "../../hooks/useSession";
 import { plural } from "../../lib/format";
 import { Callout } from "../ui/Callout";
 import { EmptyState } from "../ui/EmptyState";
-import { Spinner } from "../ui/Spinner";
+import { TaskProgress } from "../ui/TaskProgress";
 import { IntroBlock } from "./IntroBlock";
 import { KeywordTable } from "./KeywordTable";
 import { MetaBlock } from "./MetaBlock";
@@ -25,6 +25,8 @@ interface BriefPanelProps {
    */
   excludedPages: number;
   onGenerate: () => void;
+  /** Обриває запит, який уже пішов. */
+  onCancel: () => void;
 }
 
 export function BriefPanel({
@@ -33,19 +35,15 @@ export function BriefPanel({
   readyPages,
   excludedPages,
   onGenerate,
+  onCancel,
 }: BriefPanelProps) {
   if (state.status === "running") {
     return (
-      <div
-        aria-live="polite"
-        className="card flex flex-col items-center gap-3 px-6 py-16 text-center"
-      >
-        <Spinner className="size-6" />
-        <p className="text-sm font-medium text-fg">Модель складає ТЗ…</p>
-        <p className="text-xs text-subtle">
-          Зазвичай 20–45 секунд залежно від моделі та кількості сторінок.
-        </p>
-      </div>
+      <TaskProgress
+        title="Модель складає ТЗ…"
+        scope={`${readyPages} ${plural(readyPages, "сторінка", "сторінки", "сторінок")} в основі`}
+        onCancel={onCancel}
+      />
     );
   }
 

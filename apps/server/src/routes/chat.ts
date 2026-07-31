@@ -41,7 +41,13 @@ chatRoutes.use("*", requireAuth);
 chatRoutes.post("/", async (c) => {
   const config = getConfig();
   const body = parseBody(chatSchema, await readJson(c.req.raw));
-  const provider = await providerForUser(config, c.get("user").id);
+  // Сигнал розриву: правка коротша за генерацію, але кинута вкладка так само
+  // не має тримати запит до моделі.
+  const provider = await providerForUser(
+    config,
+    c.get("user").id,
+    c.req.raw.signal,
+  );
 
   // Мову правка не змінює, тому код виводимо з назви, збереженої в брифі.
   // Назва не з реєстру (стара сесія, вільна форма від моделі) не скасовує

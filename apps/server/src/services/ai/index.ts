@@ -8,20 +8,30 @@ import { OpenAiProvider } from "./providers/openai";
 import type { AiProvider } from "./types";
 
 export type { AiProvider, AiJsonRequest, AiJsonResponse, AiMessage } from "./types";
+export { requestJson } from "./request";
+export type { ValidatedResponse } from "./request";
 
-/** Збірка провайдера за розшифрованим ключем користувача. */
+/**
+ * Збірка провайдера за розшифрованим ключем користувача.
+ *
+ * `signal` — сигнал розриву HTTP-запиту. Він у провайдері, а не в кожному
+ * виклику generateJson, бо провайдер і так створюється на один запит: так
+ * скасування доходить до SDK, а generateBrief, editBrief і comparePage
+ * лишаються без жодного знання про HTTP.
+ */
 export function createProvider(
   provider: AiProviderId,
   apiKey: string,
   model: string,
+  signal?: AbortSignal,
 ): AiProvider {
   switch (provider) {
     case "gemini":
-      return new GeminiProvider(apiKey, model);
+      return new GeminiProvider(apiKey, model, signal);
     case "openai":
-      return new OpenAiProvider(apiKey, model);
+      return new OpenAiProvider(apiKey, model, signal);
     case "anthropic":
-      return new AnthropicProvider(apiKey, model);
+      return new AnthropicProvider(apiKey, model, signal);
   }
 }
 
@@ -45,6 +55,10 @@ export async function describeEffectiveProvider(
 
 /**
  * Провайдер для конкретного користувача — завжди його власним ключем.
+ *
+ * `signal` варто передавати всюди, де запит довгий: без нього кнопка
+ * «Скасувати» в інтерфейсі звільняє лише браузер, а модель доробляє відповідь
+ * у нікуди за гроші користувача.
  * Спільного серверного ключа немає: він означав би спільний ліміт і чужий
  * рахунок за токени. Уся решта коду (generateBrief, editBrief) працює
  * з готовим AiProvider і про це рішення не знає.
@@ -52,6 +66,7 @@ export async function describeEffectiveProvider(
 export async function providerForUser(
   config: AppConfig,
   userId: string,
+  signal?: AbortSignal,
 ): Promise<AiProvider> {
   const key = await resolveActiveKey(config, userId);
 
@@ -64,5 +79,5 @@ export async function providerForUser(
     );
   }
 
-  return createProvider(key.provider, key.apiKey, key.model);
+  return createProvider(key.provider, key.apiKey, key.model, signal);
 }

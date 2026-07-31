@@ -35,8 +35,10 @@ briefRoutes.post("/", async (c) => {
 
   // Провайдер і промпти — паралельно: обидва потрібні до першого звернення
   // до моделі й один одного не чекають.
+  // Сигнал розриву — щоб «Скасувати» в інтерфейсі обривало запит до моделі,
+  // а не лише очікування в браузері.
   const [provider, prompts] = await Promise.all([
-    providerForUser(config, c.get("user").id),
+    providerForUser(config, c.get("user").id, c.req.raw.signal),
     resolvePromptSet(config),
   ]);
 

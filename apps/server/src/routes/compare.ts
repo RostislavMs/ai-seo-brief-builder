@@ -33,8 +33,9 @@ compareRoutes.post("/", async (c) => {
   const config = getConfig();
   const body = parseBody(compareSchema, await readJson(c.req.raw));
 
+  // Сигнал розриву — як і в генерації ТЗ: скасування має доходити до моделі.
   const [provider, prompts] = await Promise.all([
-    providerForUser(config, c.get("user").id),
+    providerForUser(config, c.get("user").id, c.req.raw.signal),
     resolvePromptSet(config),
   ]);
 

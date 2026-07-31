@@ -8,6 +8,7 @@ import { SourceBadge } from "../analysis/SourceBadge";
 import { Callout } from "../ui/Callout";
 import { EmptyState } from "../ui/EmptyState";
 import { Spinner } from "../ui/Spinner";
+import { TaskProgress } from "../ui/TaskProgress";
 import { ComparisonReport } from "./ComparisonReport";
 import { OwnPageForm } from "./OwnPageForm";
 
@@ -166,6 +167,8 @@ interface ComparePanelProps {
   onRerunAnalysis: () => void;
   onRemove: () => void;
   onCompare: () => void;
+  /** Обриває порівняння, яке вже пішло. */
+  onCancelCompare: () => void;
 }
 
 /**
@@ -188,6 +191,7 @@ export function ComparePanel({
   onRerunAnalysis,
   onRemove,
   onCompare,
+  onCancelCompare,
 }: ComparePanelProps) {
   const [replacing, setReplacing] = useState(false);
 
@@ -256,18 +260,11 @@ export function ComparePanel({
       )}
 
       {comparisonState.status === "running" ? (
-        <div
-          aria-live="polite"
-          className="card flex flex-col items-center gap-3 px-6 py-16 text-center"
-        >
-          <Spinner className="size-6" />
-          <p className="text-sm font-medium text-fg">
-            Модель порівнює сторінку з конкурентами…
-          </p>
-          <p className="text-xs text-subtle">
-            Зазвичай 20–45 секунд залежно від моделі та кількості сторінок.
-          </p>
-        </div>
+        <TaskProgress
+          title="Модель порівнює сторінку з конкурентами…"
+          scope={`${readyCompetitors} ${plural(readyCompetitors, "конкурент", "конкуренти", "конкурентів")}`}
+          onCancel={onCancelCompare}
+        />
       ) : comparison ? (
         <>
           {stale && (

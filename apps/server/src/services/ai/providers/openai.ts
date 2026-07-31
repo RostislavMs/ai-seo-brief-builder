@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { AppError } from "../../../http/errors";
+import { abortedError, AppError } from "../../../http/errors";
 import type { AiJsonRequest, AiJsonResponse, AiProvider } from "../types";
 
 const ERROR_PREVIEW_CHARS = 300;
@@ -23,6 +23,14 @@ export class OpenAiProvider implements AiProvider {
   constructor(
     apiKey: string,
     readonly model: string,
+    /**
+     * Сигнал розриву HTTP-запиту користувача — як і в решти провайдерів.
+     *
+     * Тут він звільняє користувача від очікування, але не рахунок: запит
+     * нестримінговий, і OpenAI доводить генерацію до кінця незалежно від
+     * того, чи хтось слухає. Обірвати саму генерацію можна лише стрімом.
+     */
+    private readonly signal?: AbortSignal,
   ) {
     this.client = new OpenAI({ apiKey });
   }
@@ -59,7 +67,7 @@ export class OpenAiProvider implements AiProvider {
         ...(acceptsTemperature(this.model) && request.temperature !== undefined
           ? { temperature: request.temperature }
           : {}),
-      });
+      }, { signal: this.signal });
 
       const choice = response.choices[0];
 
@@ -111,6 +119,8 @@ export class OpenAiProvider implements AiProvider {
 }
 
 function toAiError(error: unknown): AppError {
+  if (error instanceof OpenAI.APIUserAbortError) return abortedError();
+
   if (error instanceof OpenAI.AuthenticationError) {
     return new AppError(
       "ai_auth_error",

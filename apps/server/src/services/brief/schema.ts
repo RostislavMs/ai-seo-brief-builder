@@ -11,6 +11,12 @@ import { rangeSchema } from "../../schemas/range";
  *
  * Описи полів англійською навмисно: їх читає модель, і саме вони задають,
  * що має бути англійською інструкцією, а що — контентом мовою конкурентів.
+ *
+ * Поля, для яких порожнє значення законне («Empty array for other kinds»,
+ * «empty array if not needed»), мають .default(). Схема в запиті все одно
+ * називає їх обов'язковими — модель має їх надсилати, — але жоден провайдер
+ * не гарантує форму відповіді, і на порожньому items у блоці highlight
+ * валилося все ТЗ. Дописати [] тут дешевше за ще один запит.
  */
 
 const blockSchema = z.object({
@@ -41,6 +47,7 @@ const blockSchema = z.object({
     ),
   items: z
     .array(z.string())
+    .default([])
     .describe(
       "IN THE CONTENT LANGUAGE. For kind=list and kind=ordered_list — the " +
         "points that must be mentioned. For kind=questions — the FAQ questions " +
@@ -49,6 +56,7 @@ const blockSchema = z.object({
     ),
   columns: z
     .array(z.string())
+    .default([])
     .describe(
       "IN THE CONTENT LANGUAGE. For kind=table — column headers. For " +
         "kind=template — column headers of the small table inside every " +
@@ -56,6 +64,7 @@ const blockSchema = z.object({
     ),
   rows: z
     .array(z.string())
+    .default([])
     .describe(
       "IN THE CONTENT LANGUAGE. Labels of the rows the writer must fill in. " +
         "Same two kinds as columns. Empty array for other kinds.",
@@ -119,8 +128,14 @@ const h3Schema = z.object({
       "IN THE CONTENT LANGUAGE. Keywords for this section — 4-8 of them, " +
         "word forms counted separately",
     ),
-  blocks: z.array(blockSchema).describe("Lists, tables or FAQ inside this H3"),
-  children: z.array(h4Schema).describe("Nested H4; empty array if not needed"),
+  blocks: z
+    .array(blockSchema)
+    .default([])
+    .describe("Lists, tables or FAQ inside this H3"),
+  children: z
+    .array(h4Schema)
+    .default([])
+    .describe("Nested H4; empty array if not needed"),
 });
 
 const h2Schema = z.object({
@@ -139,8 +154,14 @@ const h2Schema = z.object({
         "do NOT split into primary and secondary. 8-15 of them, listing the " +
         "word forms of the language as separate entries.",
     ),
-  blocks: z.array(blockSchema).describe("Lists, tables or FAQ inside this H2"),
-  children: z.array(h3Schema).describe("Nested H3; empty array if not needed"),
+  blocks: z
+    .array(blockSchema)
+    .default([])
+    .describe("Lists, tables or FAQ inside this H2"),
+  children: z
+    .array(h3Schema)
+    .default([])
+    .describe("Nested H3; empty array if not needed"),
 });
 
 const introSchema = z.object({
@@ -192,6 +213,7 @@ const optionalAdditionSchema = z.object({
     ),
   section: z
     .string()
+    .default("")
     .describe(
       "IN THE CONTENT LANGUAGE. The heading from \"structure\" this goes into " +
         "or after, copied verbatim. Empty string only if the place genuinely " +
@@ -247,12 +269,14 @@ export const seoBriefSchema = z.object({
   recommendations: z.object({
     optionalAdditions: z
       .array(optionalAdditionSchema)
+      .default([])
       .describe(
         "Headings and blocks the writer MAY add on top of the outline. " +
           "Anything mandatory belongs in \"structure\", not here.",
       ),
     structureNotes: z
       .array(z.string())
+      .default([])
       .describe(
         "IN ENGLISH. Advice about the article as a whole that belongs to no " +
           "single section: reading order, what to keep short, what to link, " +

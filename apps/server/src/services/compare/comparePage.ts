@@ -12,7 +12,7 @@ import {
   resolveContentLanguage,
 } from "@brief/shared";
 import { AppError } from "../../http/errors";
-import type { AiProvider } from "../ai";
+import { requestJson, type AiProvider } from "../ai";
 import { buildPagePayload, buildPagesPayload } from "../brief/payload";
 import type { PromptSet } from "../prompts/repository";
 import { buildKeywords, buildMetrics, buildScore } from "./metrics";
@@ -104,55 +104,48 @@ export async function comparePage(
   const rivals = buildPagesPayload(competitors);
   const metrics = buildMetrics(input.own, competitors);
 
-  const response = await provider.generateJson({
-    system: comparisonSystemPrompt({
-      language: language.name,
-      rules,
-      prompts: input.prompts,
-    }),
-    messages: [
-      {
-        role: "user",
-        content: comparisonUserPrompt({
-          topic: input.topic,
-          ownJson: own.json,
-          competitorsJson: rivals.json,
-          competitorCount: competitors.length,
-          ownWords: metrics.wordCount.own,
-          medianWords: metrics.wordCount.median,
-          detectedLanguage: language.name,
-          prompts: input.prompts,
-        }),
-      },
-    ],
-    responseSchema: toComparisonResponseSchema(),
-    // Між генерацією (0.4) і правкою (0.2): вирок наявній сторінці має бути
-    // точним, але прогалини — це все ще пошук, а не переписування абзацу.
-    temperature: 0.3,
-  });
+  const response = await requestJson(
+    provider,
+    {
+      system: comparisonSystemPrompt({
+        language: language.name,
+        rules,
+        prompts: input.prompts,
+      }),
+      messages: [
+        {
+          role: "user",
+          content: comparisonUserPrompt({
+            topic: input.topic,
+            ownJson: own.json,
+            competitorsJson: rivals.json,
+            competitorCount: competitors.length,
+            ownWords: metrics.wordCount.own,
+            medianWords: metrics.wordCount.median,
+            detectedLanguage: language.name,
+            prompts: input.prompts,
+          }),
+        },
+      ],
+      responseSchema: toComparisonResponseSchema(),
+      // Між генерацією (0.4) і правкою (0.2): вирок наявній сторінці має бути
+      // точним, але прогалини — це все ще пошук, а не переписування абзацу.
+      temperature: 0.3,
+    },
+    comparisonReportSchema,
+  );
 
   console.info(
     `[compare] ${provider.name}/${response.model} · мова ${language.name} · ` +
       `правил ${rules.global.length}+${rules.language.length} · ` +
       `конкурентів ${competitors.length} · ` +
       `промпт ${own.chars + rivals.chars} симв. · ` +
-      `токени ${response.usage.inputTokens ?? "?"}→${response.usage.outputTokens ?? "?"}`,
+      `токени ${response.usage.inputTokens ?? "?"}→${response.usage.outputTokens ?? "?"}` +
+      `${response.attempts > 1 ? ` · спроб ${response.attempts}` : ""}`,
   );
 
-  const parsed = comparisonReportSchema.safeParse(response.data);
-
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    throw new AppError(
-      "ai_schema_mismatch",
-      `Модель повернула структуру, що не відповідає схемі: ` +
-        `${issue?.path.join(".") || "корінь"} — ${issue?.message ?? "невідома причина"}`,
-      502,
-    );
-  }
-
   const comparison = assemble({
-    report: parsed.data,
+    report: response.data,
     own: input.own,
     competitors,
     metrics,

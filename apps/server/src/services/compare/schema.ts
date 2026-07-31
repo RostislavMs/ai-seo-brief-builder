@@ -93,6 +93,7 @@ export const comparisonReportSchema = z.object({
         field: metaFieldSchema,
         suggested: z
           .string()
+          .default("")
           .describe(
             "IN THE CONTENT LANGUAGE. The replacement. Empty string means the " +
               "current value is good enough and must be left alone.",
@@ -109,8 +110,12 @@ export const comparisonReportSchema = z.object({
       "Exactly one entry per field: title, description, h1. Three entries, " +
         "never more, never fewer.",
     ),
+  // .default() — там, де порожнє значення законне за самим описом поля:
+  // модель радше пропускає таке поле, ніж надсилає порожнім, і без цього
+  // валився б увесь звіт. Те саме рішення, що й у схемі ТЗ.
   strengths: z
     .array(z.string())
+    .default([])
     .describe(
       "IN ENGLISH. What this page already does better than the competitors and " +
         "must not lose in the rewrite. Empty array if there is genuinely nothing.",

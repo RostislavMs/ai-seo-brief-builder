@@ -47,6 +47,14 @@ interface UseSessionResult {
   runAnalysis: () => Promise<void>;
   /** Генерує SEO ТЗ з успішно проаналізованих сторінок. */
   runBrief: () => Promise<void>;
+  /**
+   * Обриває генерацію ТЗ, що вже пішла.
+   *
+   * Обриває саме очікування: сервер уже почав запит до моделі й доведе його
+   * до кінця, тому витрачені токени спишуться. Кнопка звільняє користувача,
+   * а не рахунок.
+   */
+  cancelBrief: () => void;
   /** Надсилає репліку в чат; за потреби оновлює ТЗ. */
   sendMessage: (text: string) => Promise<void>;
   rename: (name: string) => Promise<void>;
@@ -65,6 +73,8 @@ interface UseSessionResult {
   removeOwnPage: () => Promise<void>;
   /** Порівнює власну сторінку з конкурентами. */
   runComparison: () => Promise<void>;
+  /** Обриває порівняння — з тим самим застереженням, що й cancelBrief. */
+  cancelComparison: () => void;
   /**
    * Публікує сесію або оновлює вже опубліковану до поточного стану.
    * Посилання при оновленні не змінюється.
@@ -97,6 +107,14 @@ export function useSession(id: string | undefined): UseSessionResult {
    * що був на момент створення колбеку.
    */
   const current = useRef<Session | null>(null);
+
+  /**
+   * Контролери довгих запитів до моделі — щоб кнопка «Скасувати» мала що
+   * обірвати. У ref, а не в стані: значення потрібне обробнику кліку, і
+   * зберігання його в стані лише перемальовувало б панель без причини.
+   */
+  const briefRequest = useRef<AbortController | null>(null);
+  const comparisonRequest = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -233,11 +251,15 @@ export function useSession(id: string | undefined): UseSessionResult {
 
     setBriefState({ status: "running" });
 
+    const controller = new AbortController();
+    briefRequest.current = controller;
+
     try {
       const brief = await requestBrief(
         existing.topic || existing.name,
         pages,
         existing.contentLanguage,
+        controller.signal,
       );
 
       // Нове ТЗ знімає попередження про відкинуте старе.
@@ -246,9 +268,22 @@ export function useSession(id: string | undefined): UseSessionResult {
 
       setBriefState({ status: "idle" });
     } catch (error) {
+      // Скасування — рішення користувача, а не збій: повертаємося в спокійний
+      // стан, без червоного повідомлення про те, що він і зробив сам.
+      if (error instanceof ApiRequestError && error.code === "aborted") {
+        setBriefState({ status: "idle" });
+        return;
+      }
+
       setBriefState({ status: "error", message: errorMessage(error) });
+    } finally {
+      briefRequest.current = null;
     }
   }, [patch]);
+
+  const cancelBrief = useCallback((): void => {
+    briefRequest.current?.abort();
+  }, []);
 
   /**
    * Парсинг власної сторінки. Той самий шлях, що й у конкурентів:
@@ -367,12 +402,16 @@ export function useSession(id: string | undefined): UseSessionResult {
 
     setComparisonState({ status: "running" });
 
+    const controller = new AbortController();
+    comparisonRequest.current = controller;
+
     try {
       const comparison = await requestComparison(
         existing.topic || existing.name,
         own,
         competitors,
         existing.contentLanguage,
+        controller.signal,
       );
 
       await updateSession(existing.id, { comparison });
@@ -380,9 +419,20 @@ export function useSession(id: string | undefined): UseSessionResult {
 
       setComparisonState({ status: "idle" });
     } catch (error) {
+      if (error instanceof ApiRequestError && error.code === "aborted") {
+        setComparisonState({ status: "idle" });
+        return;
+      }
+
       setComparisonState({ status: "error", message: errorMessage(error) });
+    } finally {
+      comparisonRequest.current = null;
     }
   }, [patch]);
+
+  const cancelComparison = useCallback((): void => {
+    comparisonRequest.current?.abort();
+  }, []);
 
   /**
    * Публікація сесії.
@@ -584,6 +634,7 @@ export function useSession(id: string | undefined): UseSessionResult {
     shareState,
     runAnalysis,
     runBrief,
+    cancelBrief,
     sendMessage,
     rename,
     setContentLanguage,
@@ -592,6 +643,7 @@ export function useSession(id: string | undefined): UseSessionResult {
     runOwnAnalysis,
     removeOwnPage,
     runComparison,
+    cancelComparison,
     publish,
     unpublish,
   };

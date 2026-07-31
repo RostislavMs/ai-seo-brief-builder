@@ -46,6 +46,7 @@ export function SessionPage() {
     shareState,
     runAnalysis,
     runBrief,
+    cancelBrief,
     sendMessage,
     setContentLanguage,
     toggleExcluded,
@@ -53,6 +54,7 @@ export function SessionPage() {
     runOwnAnalysis,
     removeOwnPage,
     runComparison,
+    cancelComparison,
     publish,
     unpublish,
   } = useSession(id);
@@ -262,6 +264,7 @@ export function SessionPage() {
           readyPages={usableCount}
           excludedPages={parsedCount - usableCount}
           onGenerate={() => void runBrief()}
+          onCancel={cancelBrief}
         />
       )}
 
@@ -287,6 +290,7 @@ export function SessionPage() {
           onRerunAnalysis={() => void runOwnAnalysis()}
           onRemove={() => void removeOwnPage()}
           onCompare={() => void runComparison()}
+          onCancelCompare={cancelComparison}
         />
       )}
     </div>
