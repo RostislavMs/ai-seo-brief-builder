@@ -1,6 +1,9 @@
 import type {
   AiKeySummary,
   AiProviderId,
+  FetchKeyStatus,
+  FetchKeySummary,
+  FetchServiceId,
   MeResponse,
   ModelsResponse,
   UpdateSettingsRequest,
@@ -52,6 +55,34 @@ export async function changeKeyModel(
 
 export function removeApiKey(provider: AiProviderId): Promise<void> {
   return api.delete(`/keys/${provider}`);
+}
+
+/* ── Платні сервіси доступу до сторінок ───────────────────────────────────── */
+
+/**
+ * Ключ сервісу доступу перевіряється на сервері живим запитом, тому у відповіді
+ * одразу приходить і стан рахунку — окремого запиту після збереження не треба.
+ */
+export async function saveFetchKey(
+  service: FetchServiceId,
+  apiKey: string,
+): Promise<{ key: FetchKeySummary; status: FetchKeyStatus }> {
+  return api.put<{ key: FetchKeySummary; status: FetchKeyStatus }>(
+    `/fetch-keys/${service}`,
+    { apiKey },
+  );
+}
+
+export function removeFetchKey(service: FetchServiceId): Promise<void> {
+  return api.delete(`/fetch-keys/${service}`);
+}
+
+/** Залишок кредитів за вже збереженим ключем. */
+export function fetchKeyStatus(
+  service: FetchServiceId,
+  signal?: AbortSignal,
+): Promise<FetchKeyStatus> {
+  return api.get<FetchKeyStatus>(`/fetch-keys/${service}/status`, signal);
 }
 
 export async function saveSettings(

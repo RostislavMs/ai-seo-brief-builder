@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { abortedError, AppError } from "../../../http/errors";
+import type { AiDeadline } from "../deadline";
 import type { AiJsonRequest, AiJsonResponse, AiProvider } from "../types";
 import { toAnthropicSchema } from "./anthropicSchema";
 
@@ -64,19 +65,28 @@ export class AnthropicProvider implements AiProvider {
     apiKey: string,
     readonly model: string,
     /**
-     * Сигнал розриву HTTP-запиту користувача.
+     * Стеля часу на запит разом із сигналом розриву (deadline.ts).
      *
      * У конструкторі, а не в generateJson: провайдер створюється на один
      * запит, тому термін життя сигналу рівно той самий — а бізнес-логіка
      * (generateBrief і решта) лишається без жодного знання про HTTP.
      *
-     * Тут він справді обриває генерацію, а не лише очікування: відповідь
+     * Сигнал звідси справді обриває генерацію, а не лише очікування: відповідь
      * приймається стрімом, тож закрите зʼєднання зупиняє модель, і токени
      * за ненадіслану решту не списуються.
      */
-    private readonly signal?: AbortSignal,
+    readonly deadline?: AiDeadline,
   ) {
+    // Ні timeout, ні maxRetries тут не задаються навмисно: перший SDK повторює
+    // (тобто межа виходить утричі більша за задану), а другий лишається
+    // корисним проти 429 і 529 — загальний час усе одно обмежує сигнал, і він
+    // обриває будь-яку спробу, хоч першу, хоч третю.
     this.client = new Anthropic({ apiKey });
+  }
+
+  /** Решта класу працює з сигналом, а не з бюджетом — він її не стосується. */
+  private get signal(): AbortSignal | undefined {
+    return this.deadline?.signal;
   }
 
   async generateJson(request: AiJsonRequest): Promise<AiJsonResponse> {

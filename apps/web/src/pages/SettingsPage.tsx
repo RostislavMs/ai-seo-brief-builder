@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
-import { AI_PROVIDER_IDS, type AiProviderId } from "@brief/shared";
+import {
+  AI_PROVIDER_IDS,
+  FETCH_SERVICE_IDS,
+  type AiProviderId,
+  type FetchServiceId,
+} from "@brief/shared";
 import { useAccount } from "../auth/AccountContext";
 import { useAuth } from "../auth/AuthContext";
+import { FetchServiceCard } from "../components/settings/FetchServiceCard";
 import { ProviderCard } from "../components/settings/ProviderCard";
 import { Badge } from "../components/ui/Badge";
 import { Callout } from "../components/ui/Callout";
@@ -72,12 +78,15 @@ export function SettingsPage() {
   const keyFor = (provider: AiProviderId) =>
     me.keys.find((key) => key.provider === provider) ?? null;
 
+  const fetchKeyFor = (service: FetchServiceId) =>
+    me.fetchKeys.find((key) => key.service === service) ?? null;
+
   return (
     <div className="space-y-10">
       <div>
         <h1 className="text-2xl font-semibold">Налаштування</h1>
         <p className="mt-1 text-sm leading-relaxed text-subtle">
-          Профіль і ключі AI-провайдерів.
+          Профіль, ключі AI-провайдерів і доступ до закритих сторінок.
         </p>
       </div>
 
@@ -187,6 +196,31 @@ export function SettingsPage() {
               existing={keyFor(provider)}
               active={me.settings.activeProvider === provider}
               onActivate={() => void activate(provider)}
+              onChanged={refresh}
+            />
+          ))}
+        </div>
+      </section>
+
+      {/* ── Доступ до закритих сторінок ──────────────────────────────────── */}
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold">Доступ до закритих сторінок</h2>
+          <p className="mt-1 text-sm leading-relaxed text-subtle">
+            Необовʼязково. Сторінку конкурента сервіс дістає послідовністю
+            безкоштовних спроб — прямий запит, браузер, зовнішній сервіс
+            читання, — і для більшості сайтів цього достатньо. Ключ нижче
+            додає ще одну спробу для тих сторінок, які не беруться нічим
+            безкоштовним: за них платите ви, і лише за ті, де до неї дійшло.
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          {FETCH_SERVICE_IDS.map((service) => (
+            <FetchServiceCard
+              key={service}
+              service={service}
+              existing={fetchKeyFor(service)}
               onChanged={refresh}
             />
           ))}

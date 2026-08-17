@@ -2,11 +2,17 @@ import { Hono } from "hono";
 import { z } from "zod";
 import {
   DEFAULT_MODEL,
+  FETCH_SERVICE_IDS,
+  FETCH_SERVICE_KEY_PREFIX,
+  FETCH_SERVICE_LABEL,
   PROVIDER_KEY_PREFIX,
   PROVIDER_LABEL,
   mergeModels,
   type AiKeySummary,
   type AiProviderId,
+  type FetchKeyStatus,
+  type FetchKeySummary,
+  type FetchServiceId,
   type MeResponse,
   type ModelsResponse,
   type UserProfile,
@@ -19,19 +25,28 @@ import { parseBody, readJson } from "../http/validate";
 import { describeEffectiveProvider } from "../services/ai";
 import { listModels } from "../services/ai/models";
 import {
+  deleteFetchKey,
   deleteKey,
+  getDecryptedFetchKey,
   getDecryptedKey,
   getProfile,
   getSettings,
+  listFetchKeys,
   listKeys,
+  saveFetchKey,
   saveKey,
   updateKeyModel,
   updateProfile,
   updateSettings,
 } from "../services/account/repository";
+import {
+  fetchFirecrawlCredits,
+  type FirecrawlCredits,
+} from "../services/fetcher/firecrawl";
 import { countPendingRules } from "../services/rules/repository";
 
 const providerSchema = z.enum(["gemini", "openai", "anthropic"]);
+const fetchServiceSchema = z.enum(["firecrawl"]);
 const modelSchema = z.string().trim().min(1, "не обрано модель").max(120);
 
 const saveKeySchema = z.object({
@@ -42,6 +57,10 @@ const saveKeySchema = z.object({
 const updateKeySchema = z.object({ model: modelSchema });
 
 const previewSchema = z.object({
+  apiKey: z.string().trim().min(20, "ключ надто короткий"),
+});
+
+const saveFetchKeySchema = z.object({
   apiKey: z.string().trim().min(20, "ключ надто короткий"),
 });
 
@@ -81,6 +100,34 @@ function providerParam(value: string): AiProviderId {
   return parsed.data;
 }
 
+/** Той самий ранній відсів, що для AI: префікс ключа перед виходом у мережу. */
+function assertFetchKeyShape(service: FetchServiceId, apiKey: string): void {
+  const prefix = FETCH_SERVICE_KEY_PREFIX[service];
+
+  if (prefix && !apiKey.startsWith(prefix)) {
+    throw new AppError(
+      "key_format_invalid",
+      `Ключ ${FETCH_SERVICE_LABEL[service]} має починатися з «${prefix}». ` +
+        "Схоже, скопійовано ключ іншого сервісу.",
+      422,
+    );
+  }
+}
+
+function fetchServiceParam(value: string): FetchServiceId {
+  const parsed = fetchServiceSchema.safeParse(value);
+
+  if (!parsed.success) {
+    throw new AppError(
+      "unknown_fetch_service",
+      `Невідомий сервіс доступу: ${value}. Доступні: ${FETCH_SERVICE_IDS.join(", ")}.`,
+      404,
+    );
+  }
+
+  return parsed.data;
+}
+
 /* ── /api/me ─────────────────────────────────────────────────────────────── */
 
 export const meRoutes = new Hono<AuthEnv>();
@@ -93,9 +140,14 @@ meRoutes.get("/", async (c) => {
 
   // Незалежні читання — паралельно: послідовно вони дали б помітну паузу
   // на першому екрані після входу.
-  const [profile, keys, settings, effective] = await Promise.all([
+  //
+  // Ключі сервісів доступу читаються тут само, і навмисно без залишку кредитів:
+  // за ним стоїть запит до чужого API, а /api/me читається на кожному екрані.
+  // Кредити тягне лише сторінка налаштувань — окремим маршрутом.
+  const [profile, keys, fetchKeys, settings, effective] = await Promise.all([
     getProfile(config, user),
     listKeys(config, user.id),
+    listFetchKeys(config, user.id),
     getSettings(config, user.id),
     describeEffectiveProvider(config, user.id),
   ]);
@@ -107,7 +159,14 @@ meRoutes.get("/", async (c) => {
     role: profile.role,
   });
 
-  const body: MeResponse = { profile, keys, settings, effective, pendingRules };
+  const body: MeResponse = {
+    profile,
+    keys,
+    fetchKeys,
+    settings,
+    effective,
+    pendingRules,
+  };
 
   return c.json(body);
 });
@@ -223,6 +282,153 @@ keyRoutes.delete("/:provider", async (c) => {
 
   return c.body(null, 204);
 });
+
+/* ── /api/fetch-keys ─────────────────────────────────────────────────────── */
+
+/** Чужий API опитується лише для перевірки — терпіння коротке. */
+const CREDITS_TIMEOUT_MS = 10_000;
+
+/**
+ * Чим перевіряти ключ кожного сервісу. Вичерпний запис, а не виклик навпростець:
+ * коли у FetchServiceId додасться друге значення, TypeScript зажадає й читача
+ * для нього — інакше новий сервіс мовчки перевірявся б чужим API.
+ *
+ * Повертає лічильники в спільному вигляді; сервіс, у якого немає кредитів як
+ * поняття, віддасть тут null-и, і це нормально — перевіркою є сам факт, що
+ * запит пройшов.
+ */
+const CREDIT_READERS: Record<
+  FetchServiceId,
+  (apiKey: string, timeoutMs: number) => Promise<FirecrawlCredits>
+> = {
+  firecrawl: fetchFirecrawlCredits,
+};
+
+export const fetchKeyRoutes = new Hono<AuthEnv>();
+
+fetchKeyRoutes.use("*", requireAuth);
+
+/**
+ * Ключі платних сервісів доступу до сторінок.
+ *
+ * Окремий роутер, а не /api/keys: там кожен ключ обов'язково має модель і один
+ * із провайдерів обирається активним, а тут ні моделі, ні вибору немає — ключі
+ * діють одночасно, кожен на своїй ступені каскаду. Спроба зліпити їх в одному
+ * маршруті дала б купу полів, які для половини значень не мають сенсу.
+ */
+fetchKeyRoutes.get("/", async (c) => {
+  const keys = await listFetchKeys(getConfig(), c.get("user").id);
+  return c.json({ keys });
+});
+
+/** Стан рахунку за збереженим ключем. Живий запит, тому окремо від /api/me. */
+fetchKeyRoutes.get("/:service/status", async (c) => {
+  const config = getConfig();
+  const service = fetchServiceParam(c.req.param("service"));
+  const apiKey = await getDecryptedFetchKey(config, c.get("user").id, service);
+
+  if (!apiKey) {
+    throw new AppError(
+      "key_not_found",
+      `Ключ ${FETCH_SERVICE_LABEL[service]} не додано.`,
+      404,
+    );
+  }
+
+  return c.json(await creditsStatus(service, apiKey));
+});
+
+fetchKeyRoutes.put("/:service", async (c) => {
+  const config = getConfig();
+  const user = c.get("user");
+  const service = fetchServiceParam(c.req.param("service"));
+  const body = parseBody(saveFetchKeySchema, await readJson(c.req.raw));
+
+  assertFetchKeyShape(service, body.apiKey);
+
+  // Ключ перевіряється живим запитом — так само, як AI-ключ звіркою переліку
+  // моделей. Інакше про неробочий ключ користувач дізнався б аж із переліку
+  // спроб каскаду, де рядок про Firecrawl легко прийняти за проблему сайту.
+  //
+  // Саме запит про кредити, а не пробний scrape: він безкоштовний, тому
+  // перевірка ключа не коштує користувачеві нічого.
+  const credits = await CREDIT_READERS[service](
+    body.apiKey,
+    CREDITS_TIMEOUT_MS,
+  ).catch((error: unknown) => {
+    throw new AppError(
+      "fetch_key_rejected",
+      error instanceof Error
+        ? error.message
+        : `Не вдалося перевірити ключ ${FETCH_SERVICE_LABEL[service]}.`,
+      422,
+    );
+  });
+
+  const key: FetchKeySummary = await saveFetchKey(
+    config,
+    user.id,
+    service,
+    body.apiKey,
+  );
+
+  return c.json({
+    key,
+    status: {
+      service,
+      remainingCredits: credits.remainingCredits,
+      planCredits: credits.planCredits,
+      periodEnd: credits.periodEnd,
+      live: true,
+      warning: null,
+    } satisfies FetchKeyStatus,
+  });
+});
+
+fetchKeyRoutes.delete("/:service", async (c) => {
+  const service = fetchServiceParam(c.req.param("service"));
+
+  await deleteFetchKey(getConfig(), c.get("user").id, service);
+
+  // Нічого більше знімати не треба: активного вибору серед цих сервісів немає,
+  // а каскад без ключа просто не виконує відповідну ступінь.
+  return c.body(null, 204);
+});
+
+/**
+ * Кредити з живого запиту. Помилка сервісу не 500: ключ збережений і робочий
+ * учора може не відповісти сьогодні, а сторінка налаштувань має показати
+ * причину, а не порожній екран.
+ */
+async function creditsStatus(
+  service: FetchServiceId,
+  apiKey: string,
+): Promise<FetchKeyStatus> {
+  try {
+    const credits = await CREDIT_READERS[service](apiKey, CREDITS_TIMEOUT_MS);
+
+    return {
+      service,
+      remainingCredits: credits.remainingCredits,
+      planCredits: credits.planCredits,
+      periodEnd: credits.periodEnd,
+      live: true,
+      warning: null,
+    };
+  } catch (error) {
+    return {
+      service,
+      remainingCredits: null,
+      planCredits: null,
+      periodEnd: null,
+      live: false,
+      warning:
+        error instanceof Error
+          ? error.message
+          : `Не вдалося звірити рахунок ${FETCH_SERVICE_LABEL[service]}.`,
+    };
+  }
+}
 
 /* ── /api/settings ───────────────────────────────────────────────────────── */
 

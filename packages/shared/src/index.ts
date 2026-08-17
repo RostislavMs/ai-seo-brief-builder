@@ -29,6 +29,15 @@ export {
   resolveContentLanguage,
 } from "./languages/detect";
 
+export {
+  FETCH_SERVICE_IDS,
+  FETCH_SERVICE_KEY_PREFIX,
+  FETCH_SERVICE_KEY_URL,
+  FETCH_SERVICE_LABEL,
+  FETCH_SERVICE_NOTE,
+  isFetchServiceId,
+} from "./fetch/services";
+
 export type { CatalogEntry } from "./ai/catalog";
 export {
   AI_PROVIDER_IDS,

@@ -2,6 +2,7 @@ import type { AiProviderId } from "@brief/shared";
 import type { AppConfig } from "../../config";
 import { AppError } from "../../http/errors";
 import { resolveActiveKey } from "../account/repository";
+import { aiDeadline, type AiDeadline } from "./deadline";
 import { AnthropicProvider } from "./providers/anthropic";
 import { GeminiProvider } from "./providers/gemini";
 import { OpenAiProvider } from "./providers/openai";
@@ -10,28 +11,31 @@ import type { AiProvider } from "./types";
 export type { AiProvider, AiJsonRequest, AiJsonResponse, AiMessage } from "./types";
 export { requestJson } from "./request";
 export type { ValidatedResponse } from "./request";
+export { aiDeadline } from "./deadline";
+export type { AiDeadline } from "./deadline";
 
 /**
  * Збірка провайдера за розшифрованим ключем користувача.
  *
- * `signal` — сигнал розриву HTTP-запиту. Він у провайдері, а не в кожному
- * виклику generateJson, бо провайдер і так створюється на один запит: так
- * скасування доходить до SDK, а generateBrief, editBrief і comparePage
- * лишаються без жодного знання про HTTP.
+ * `deadline` — стеля часу разом із сигналом розриву HTTP-запиту (deadline.ts).
+ * Вона в провайдері, а не в кожному виклику generateJson, бо провайдер і так
+ * створюється на один запит: так і скасування, і вичерпаний бюджет доходять до
+ * SDK, а generateBrief, editBrief і comparePage лишаються без жодного знання
+ * про HTTP.
  */
 export function createProvider(
   provider: AiProviderId,
   apiKey: string,
   model: string,
-  signal?: AbortSignal,
+  deadline?: AiDeadline,
 ): AiProvider {
   switch (provider) {
     case "gemini":
-      return new GeminiProvider(apiKey, model, signal);
+      return new GeminiProvider(apiKey, model, deadline);
     case "openai":
-      return new OpenAiProvider(apiKey, model, signal);
+      return new OpenAiProvider(apiKey, model, deadline);
     case "anthropic":
-      return new AnthropicProvider(apiKey, model, signal);
+      return new AnthropicProvider(apiKey, model, deadline);
   }
 }
 
@@ -59,6 +63,10 @@ export async function describeEffectiveProvider(
  * `signal` варто передавати всюди, де запит довгий: без нього кнопка
  * «Скасувати» в інтерфейсі звільняє лише браузер, а модель доробляє відповідь
  * у нікуди за гроші користувача.
+ *
+ * Стеля часу збирається тут же, з config.aiBudgetMs: маршрутам не треба знати
+ * ні про бюджет, ні про те, що їх колись уб'є ліміт функції.
+ *
  * Спільного серверного ключа немає: він означав би спільний ліміт і чужий
  * рахунок за токени. Уся решта коду (generateBrief, editBrief) працює
  * з готовим AiProvider і про це рішення не знає.
@@ -79,5 +87,10 @@ export async function providerForUser(
     );
   }
 
-  return createProvider(key.provider, key.apiKey, key.model, signal);
+  return createProvider(
+    key.provider,
+    key.apiKey,
+    key.model,
+    aiDeadline(config.aiBudgetMs, signal),
+  );
 }

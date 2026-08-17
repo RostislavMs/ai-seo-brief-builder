@@ -6,6 +6,7 @@ import { getConfig } from "./config";
 import { AppError, toApiError } from "./http/errors";
 import { isSupabaseConfigured } from "./lib/supabase";
 import {
+  fetchKeyRoutes,
   keyRoutes,
   meRoutes,
   modelRoutes,
@@ -48,6 +49,7 @@ app.route("/public", publicRoutes);
 
 app.route("/me", meRoutes);
 app.route("/keys", keyRoutes);
+app.route("/fetch-keys", fetchKeyRoutes);
 app.route("/settings", settingsRoutes);
 app.route("/models", modelRoutes);
 app.route("/rules", ruleRoutes);

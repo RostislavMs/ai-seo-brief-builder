@@ -22,6 +22,11 @@ const SOURCE: Record<ContentSource, { tone: BadgeTone; label: string; hint: stri
     label: "проксі",
     hint: "Сайт закритий для IP сервера — сторінку взято через проксі",
   },
+  firecrawl: {
+    tone: "info",
+    label: "Firecrawl",
+    hint: "Безкоштовні способи не спрацювали — сторінку віддав Firecrawl вашим ключем, і за неї списано кредит",
+  },
   scraper: {
     tone: "info",
     label: "API рендерингу",

@@ -27,6 +27,7 @@ export const parsedPageSchema = z.object({
       "browser",
       "reader",
       "proxy",
+      "firecrawl",
       "scraper",
       "archive",
     ]),

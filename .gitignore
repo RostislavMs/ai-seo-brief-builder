@@ -4,6 +4,7 @@ dist/
 .nitro/
 .vercel/
 .data/
+.firecrawl/
 *.local
 .env
 .env.*

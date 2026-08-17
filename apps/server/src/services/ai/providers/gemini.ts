@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { abortedError, AppError } from "../../../http/errors";
+import type { AiDeadline } from "../deadline";
 import type { AiJsonRequest, AiJsonResponse, AiProvider } from "../types";
 
 /** Скільки символів відповіді показувати в помилці розбору. */
@@ -14,16 +15,22 @@ export class GeminiProvider implements AiProvider {
     apiKey: string,
     readonly model: string,
     /**
-     * Сигнал розриву HTTP-запиту користувача — як і в решти провайдерів.
+     * Стеля часу разом із сигналом розриву — як і в решти провайдерів
+     * (deadline.ts).
      *
      * Google про свій abortSignal попереджає прямо: він скасовує лише
      * очікування на боці клієнта, а не роботу сервісу, і токени спишуться
      * повністю. Передаємо все одно — звільнити зʼєднання й не тримати
      * функцію Nitro теж варто.
      */
-    private readonly signal?: AbortSignal,
+    readonly deadline?: AiDeadline,
   ) {
     this.client = new GoogleGenAI({ apiKey });
+  }
+
+  /** Решта класу працює з сигналом, а не з бюджетом — він її не стосується. */
+  private get signal(): AbortSignal | undefined {
+    return this.deadline?.signal;
   }
 
   async generateJson(request: AiJsonRequest): Promise<AiJsonResponse> {

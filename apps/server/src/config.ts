@@ -21,6 +21,12 @@ export interface AppConfig {
   maxUrlsPerRequest: number;
   /** Стеля часу на весь каскад доступу для однієї сторінки. */
   fetchBudgetMs: number;
+  /**
+   * Стеля часу на роботу з моделлю в межах одного запиту. Нуль — без стелі.
+   * Потрібна проти ліміту тривалості функції: без неї платформа вбиває запит
+   * сама, і причина не доходить ні до користувача, ні в лог.
+   */
+  aiBudgetMs: number;
   browserEnabled: boolean;
   browserTimeoutMs: number;
   browserPath: string;
@@ -33,7 +39,12 @@ export interface AppConfig {
   /** Ступінь 4 каскаду: http://логін:пароль@хост:порт. Порожньо — вимкнено. */
   proxyUrl: string;
   proxyTimeoutMs: number;
-  /** Ступінь 6: шаблон адреси API рендерингу з {url}. Порожньо — вимкнено. */
+  /**
+   * Ступінь 6: терпіння для Firecrawl. Самого ключа тут немає — він належить
+   * акаунту й читається з user_fetch_keys на кожен запит аналізу.
+   */
+  firecrawlTimeoutMs: number;
+  /** Ступінь 7: шаблон адреси API рендерингу з {url}. Порожньо — вимкнено. */
   scraperUrl: string;
   scraperKey: string;
   scraperTimeoutMs: number;
@@ -55,6 +66,7 @@ const DEFAULTS: AppConfig = {
   allowPrivateHosts: false,
   maxUrlsPerRequest: 10,
   fetchBudgetMs: 150_000,
+  aiBudgetMs: 0,
   browserEnabled: true,
   browserTimeoutMs: 35_000,
   browserPath: "",
@@ -64,6 +76,7 @@ const DEFAULTS: AppConfig = {
   readerKey: "",
   proxyUrl: "",
   proxyTimeoutMs: 25_000,
+  firecrawlTimeoutMs: 45_000,
   scraperUrl: "",
   scraperKey: "",
   scraperTimeoutMs: 40_000,
@@ -87,6 +100,12 @@ function asBoolean(value: unknown, fallback: boolean): boolean {
 
 function asString(value: unknown, fallback: string): string {
   return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+/** Як asNumber, але нуль тут дозволений: він означає «обмеження немає». */
+function asBudget(value: unknown, fallback: number): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 /**
@@ -136,6 +155,9 @@ export function getConfig(): AppConfig {
       DEFAULTS.maxUrlsPerRequest,
     ),
     fetchBudgetMs: asNumber(runtime["fetchBudgetMs"], DEFAULTS.fetchBudgetMs),
+    // asNumber відкидає нуль і від'ємне, а тут нуль — робоче значення
+    // «без стелі», тому розбір власний.
+    aiBudgetMs: asBudget(runtime["aiBudgetMs"], DEFAULTS.aiBudgetMs),
     readerEnabled: asBoolean(runtime["readerEnabled"], DEFAULTS.readerEnabled),
     readerTimeoutMs: asNumber(
       runtime["readerTimeoutMs"],
@@ -144,6 +166,10 @@ export function getConfig(): AppConfig {
     readerKey: asString(runtime["readerKey"], DEFAULTS.readerKey),
     proxyUrl: asString(runtime["proxyUrl"], DEFAULTS.proxyUrl),
     proxyTimeoutMs: asNumber(runtime["proxyTimeoutMs"], DEFAULTS.proxyTimeoutMs),
+    firecrawlTimeoutMs: asNumber(
+      runtime["firecrawlTimeoutMs"],
+      DEFAULTS.firecrawlTimeoutMs,
+    ),
     scraperUrl: asString(runtime["scraperUrl"], DEFAULTS.scraperUrl),
     scraperKey: asString(runtime["scraperKey"], DEFAULTS.scraperKey),
     scraperTimeoutMs: asNumber(

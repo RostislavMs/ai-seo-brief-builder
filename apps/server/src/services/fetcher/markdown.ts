@@ -19,6 +19,12 @@ export interface ReaderDocument {
   description: string | null;
   /** Адреса, з якої сервіс насправді читав сторінку. */
   canonical: string | null;
+  /**
+   * Мова сторінки, якщо сервіс її назвав. r.jina.ai не повертає нічого,
+   * Firecrawl віддає значення з розмітки самої сторінки — тобто те саме, що
+   * ступінь 1 прочитала б із `<html lang>`.
+   */
+  lang?: string | null;
   markdown: string;
 }
 
@@ -67,7 +73,12 @@ export function buildReaderHtml(doc: ReaderDocument): string {
     .filter(Boolean)
     .join("");
 
-  // Атрибута lang немає навмисно: сервіс його не повертає, а вигадана мова
-  // гірша за відсутню — мову сторінки визначає окремий детектор за текстом.
-  return `<!doctype html><html><head>${head}</head><body><article>${body}</article></body></html>`;
+  // Атрибут lang ставиться лише тоді, коли сервіс назвав мову сам: вигадана
+  // мова гірша за відсутню, а без неї мову визначає окремий детектор за
+  // текстом. Порожній рядок для нього — те саме, що відсутній атрибут.
+  const lang = doc.lang?.trim()
+    ? ` lang="${escapeAttribute(doc.lang.trim())}"`
+    : "";
+
+  return `<!doctype html><html${lang}><head>${head}</head><body><article>${body}</article></body></html>`;
 }

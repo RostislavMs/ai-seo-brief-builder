@@ -7,6 +7,8 @@
  * й повертає нерозібраний JSON, а валідує вже викликач.
  */
 
+import type { AiDeadline } from "./deadline";
+
 export type AiRole = "user" | "assistant";
 
 export interface AiMessage {
@@ -42,5 +44,14 @@ export interface AiJsonResponse {
 export interface AiProvider {
   readonly name: string;
   readonly model: string;
+  /**
+   * Стеля часу на роботу з моделлю (deadline.ts). Живе на провайдері, бо він
+   * створюється на один запит — рівно той самий термін життя, що й у сигналу
+   * розриву, який у нього вже є.
+   *
+   * Потрібна не самому провайдеру, а requestJson: той вирішує, чи є ще час на
+   * другу спробу, і чим саме закінчився обірваний запит.
+   */
+  readonly deadline?: AiDeadline;
   generateJson(request: AiJsonRequest): Promise<AiJsonResponse>;
 }

@@ -1,6 +1,8 @@
 import type {
   AiKeySummary,
   AiProviderId,
+  FetchKeySummary,
+  FetchServiceId,
   UserProfile,
   UserRole,
   UserSettings,
@@ -8,7 +10,7 @@ import type {
 import type { AppConfig } from "../../config";
 import type { AuthUser } from "../../http/auth";
 import { decryptSecret, encryptSecret, keyHint } from "../../lib/crypto";
-import { supabaseAdmin, throwDbError } from "../../lib/supabase";
+import { isMissingTable, supabaseAdmin, throwDbError } from "../../lib/supabase";
 
 /**
  * Доступ до профілю, налаштувань і ключів.
@@ -52,6 +54,19 @@ interface KeyRow {
   created_at: string;
   updated_at: string;
 }
+
+/** Той самий шифротекст, але без моделі: сервіс доступу її не має. */
+interface FetchKeyRow {
+  service: FetchServiceId;
+  ciphertext: string;
+  iv: string;
+  auth_tag: string;
+  hint: string;
+  created_at: string;
+  updated_at: string;
+}
+
+const FETCH_KEY_COLUMNS = "service, hint, created_at, updated_at";
 
 const DEFAULT_SETTINGS: UserSettings = { activeProvider: null };
 
@@ -346,4 +361,125 @@ export async function resolveActiveKey(
   const newest = keys[0];
 
   return newest ? getDecryptedKey(config, userId, newest.provider) : null;
+}
+
+/* ── Ключі платних сервісів доступу до сторінок ───────────────────────────── */
+
+/**
+ * Ключі сервісів доступу — окремо від AI, бо це інша роль у системі: вони не
+ * генерують текст, а лише додають каскаду доступу платні ступені. «Активного»
+ * серед них немає: діють усі одразу, кожен на своїй ступені.
+ *
+ * Читається у складі /api/me, тобто на кожному екрані. Тому непрокочена
+ * міграція 0009 тут не помилка, а порожній список: платних ступеней просто не
+ * буде. Спроба додати ключ натомість скаже прямо — saveFetchKey пише в ту саму
+ * таблицю звичайним throwDbError.
+ */
+export async function listFetchKeys(
+  config: AppConfig,
+  userId: string,
+): Promise<FetchKeySummary[]> {
+  const { data, error } = await supabaseAdmin(config)
+    .from("user_fetch_keys")
+    .select(FETCH_KEY_COLUMNS)
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .returns<Pick<FetchKeyRow, "service" | "hint" | "created_at" | "updated_at">[]>();
+
+  if (error) {
+    if (isMissingTable(error)) {
+      console.warn(
+        "[fetch-keys] таблиці user_fetch_keys немає — виконайте міграцію 0009",
+      );
+      return [];
+    }
+
+    throwDbError(error, "читання ключів сервісів доступу");
+  }
+
+  return (data ?? []).map((row) => ({
+    service: row.service,
+    hint: row.hint,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export async function saveFetchKey(
+  config: AppConfig,
+  userId: string,
+  service: FetchServiceId,
+  apiKey: string,
+): Promise<FetchKeySummary> {
+  const encrypted = encryptSecret(apiKey.trim(), config.encryptionKey);
+
+  const { data, error } = await supabaseAdmin(config)
+    .from("user_fetch_keys")
+    .upsert(
+      {
+        user_id: userId,
+        service,
+        ciphertext: encrypted.ciphertext,
+        iv: encrypted.iv,
+        auth_tag: encrypted.authTag,
+        hint: keyHint(apiKey),
+      },
+      { onConflict: "user_id,service" },
+    )
+    .select(FETCH_KEY_COLUMNS)
+    .single<Pick<FetchKeyRow, "service" | "hint" | "created_at" | "updated_at">>();
+
+  if (error) throwDbError(error, "збереження ключа сервісу доступу");
+
+  return {
+    service: data.service,
+    hint: data.hint,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
+}
+
+export async function deleteFetchKey(
+  config: AppConfig,
+  userId: string,
+  service: FetchServiceId,
+): Promise<void> {
+  const { error } = await supabaseAdmin(config)
+    .from("user_fetch_keys")
+    .delete()
+    .eq("user_id", userId)
+    .eq("service", service);
+
+  if (error) throwDbError(error, "видалення ключа сервісу доступу");
+}
+
+/**
+ * Розшифрований ключ сервісу доступу. Читається на кожен запит аналізу, тому
+ * повертає null молча: відсутній ключ — не помилка, а вимкнена ступінь каскаду.
+ * З тієї самої причини молча переживає й непрокочену міграцію 0009 — інакше
+ * вона ламала б аналіз сторінок, який до неї не має жодного стосунку.
+ */
+export async function getDecryptedFetchKey(
+  config: AppConfig,
+  userId: string,
+  service: FetchServiceId,
+): Promise<string | null> {
+  const { data, error } = await supabaseAdmin(config)
+    .from("user_fetch_keys")
+    .select("ciphertext, iv, auth_tag")
+    .eq("user_id", userId)
+    .eq("service", service)
+    .maybeSingle<Pick<FetchKeyRow, "ciphertext" | "iv" | "auth_tag">>();
+
+  if (error) {
+    if (isMissingTable(error)) return null;
+    throwDbError(error, "читання ключа сервісу доступу");
+  }
+
+  if (!data) return null;
+
+  return decryptSecret(
+    { ciphertext: data.ciphertext, iv: data.iv, authTag: data.auth_tag },
+    config.encryptionKey,
+  );
 }

@@ -4,6 +4,7 @@ import type { AnalyzeResponse } from "@brief/shared";
 import { getConfig } from "../config";
 import { requireAuth, type AuthEnv } from "../http/auth";
 import { parseBody, readJson } from "../http/validate";
+import { getDecryptedFetchKey } from "../services/account/repository";
 import { analyzePages } from "../services/analyze/analyzePages";
 
 const analyzeSchema = z.object({
@@ -24,6 +25,15 @@ analyzeRoutes.post("/", async (c) => {
 
   const urls = body.urls.slice(0, config.maxUrlsPerRequest);
 
+  // Ступінь 6 каскаду працює ключем самого користувача, тому читається тут, а
+  // не з конфігурації сервера. null — ступінь просто не виконується: це
+  // звичайний стан, а не помилка, і решта каскаду від нього не залежить.
+  const firecrawlKey = await getDecryptedFetchKey(
+    config,
+    c.get("user").id,
+    "firecrawl",
+  );
+
   const results = await analyzePages(urls, {
     timeoutMs: config.fetchTimeoutMs,
     maxBytes: config.fetchMaxBytes,
@@ -39,6 +49,8 @@ analyzeRoutes.post("/", async (c) => {
     readerKey: config.readerKey,
     proxyUrl: config.proxyUrl,
     proxyTimeoutMs: config.proxyTimeoutMs,
+    firecrawlKey: firecrawlKey ?? "",
+    firecrawlTimeoutMs: config.firecrawlTimeoutMs,
     scraperUrl: config.scraperUrl,
     scraperKey: config.scraperKey,
     scraperTimeoutMs: config.scraperTimeoutMs,

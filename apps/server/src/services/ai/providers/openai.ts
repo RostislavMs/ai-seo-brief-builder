@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { abortedError, AppError } from "../../../http/errors";
+import type { AiDeadline } from "../deadline";
 import type { AiJsonRequest, AiJsonResponse, AiProvider } from "../types";
 
 const ERROR_PREVIEW_CHARS = 300;
@@ -24,15 +25,21 @@ export class OpenAiProvider implements AiProvider {
     apiKey: string,
     readonly model: string,
     /**
-     * Сигнал розриву HTTP-запиту користувача — як і в решти провайдерів.
+     * Стеля часу разом із сигналом розриву — як і в решти провайдерів
+     * (deadline.ts).
      *
-     * Тут він звільняє користувача від очікування, але не рахунок: запит
+     * Тут сигнал звільняє користувача від очікування, але не рахунок: запит
      * нестримінговий, і OpenAI доводить генерацію до кінця незалежно від
      * того, чи хтось слухає. Обірвати саму генерацію можна лише стрімом.
      */
-    private readonly signal?: AbortSignal,
+    readonly deadline?: AiDeadline,
   ) {
     this.client = new OpenAI({ apiKey });
+  }
+
+  /** Решта класу працює з сигналом, а не з бюджетом — він її не стосується. */
+  private get signal(): AbortSignal | undefined {
+    return this.deadline?.signal;
   }
 
   async generateJson(request: AiJsonRequest): Promise<AiJsonResponse> {

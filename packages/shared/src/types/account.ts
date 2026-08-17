@@ -5,6 +5,15 @@ import type { UserRole } from "./rules";
 /** Провайдери, для яких користувач може підставити власний ключ. */
 export type AiProviderId = "gemini" | "openai" | "anthropic";
 
+/**
+ * Платні сервіси доступу до сторінок, ключ яких належить користувачеві.
+ *
+ * Окремо від AiProviderId навмисно: у цих сервісів немає ні моделі, ні
+ * «активного» вибору. Вони не замінюють один одного, а лише додають каскаду
+ * доступу ще одну ступінь — тому додати можна будь-який, а вибирати нічого.
+ */
+export type FetchServiceId = "firecrawl";
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -30,6 +39,35 @@ export interface AiKeySummary {
   updatedAt: string;
 }
 
+/**
+ * Ключ платного сервісу доступу — так само без секрету.
+ * Моделі тут немає: сервіс віддає сторінку, а не генерує текст.
+ */
+export interface FetchKeySummary {
+  service: FetchServiceId;
+  hint: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Стан рахунку сервісу доступу. Читається живим запитом на вимогу, а не
+ * разом із /api/me: залишок кредитів змінюється від кожного аналізу, і
+ * підмішувати його в кожне читання профілю означало б чужий HTTP-запит
+ * на кожному екрані.
+ */
+export interface FetchKeyStatus {
+  service: FetchServiceId;
+  /** null — сервіс не відповів; причина в `warning`. */
+  remainingCredits: number | null;
+  planCredits: number | null;
+  /** Кінець розрахункового періоду в ISO. */
+  periodEnd: string | null;
+  /** true — цифри звірено з живим API сервісу. */
+  live: boolean;
+  warning: string | null;
+}
+
 export interface UserSettings {
   /**
    * null — жодного ключа ще не додано. Серверного ключа не існує:
@@ -42,6 +80,11 @@ export interface UserSettings {
 export interface MeResponse {
   profile: UserProfile;
   keys: AiKeySummary[];
+  /**
+   * Ключі платних сервісів доступу до сторінок. Порожній масив — норма:
+   * каскад працює й без них, просто без платних ступеней.
+   */
+  fetchKeys: FetchKeySummary[];
   settings: UserSettings;
   /** Провайдер і модель, якими зараз реально виконуються запити. */
   effective: {
@@ -63,6 +106,11 @@ export interface MeResponse {
 export interface SaveKeyRequest {
   apiKey: string;
   model: string;
+}
+
+/** PUT /api/fetch-keys/:service */
+export interface SaveFetchKeyRequest {
+  apiKey: string;
 }
 
 /** PATCH /api/settings */
