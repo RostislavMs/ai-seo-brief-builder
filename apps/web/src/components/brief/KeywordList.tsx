@@ -1,3 +1,6 @@
+import { labeledListPayload } from "../../lib/briefDocument";
+import { CopyButton } from "../ui/CopyButton";
+
 interface KeywordListProps {
   keywords: readonly string[];
   /** Підпис англійською — це частина ТЗ, яку читає райтер. */
@@ -18,22 +21,26 @@ export function KeywordList({
 
   return (
     <div>
-      <p lang="en" className="text-2xs text-subtle">
-        {label}
-      </p>
+      <div className="flex items-baseline justify-between gap-2">
+        <p lang="en" data-copy-strong className="text-2xs text-subtle">
+          {label}
+        </p>
 
-      <ol className="mt-1 space-y-0.5">
+        <CopyButton
+          payload={() => labeledListPayload(keywords, label)}
+          label="Копіювати список ключів"
+        />
+      </div>
+
+      {/* Нумерація — нативна (::marker), а не окремим span: інакше при
+          копіюванні номер приїжджає текстом і подвоюється, а сам список
+          вставляється абзацами. */}
+      <ol
+        className="mt-1 list-decimal space-y-0.5 ps-5 text-xs leading-relaxed
+          text-fg marker:font-mono marker:text-faint"
+      >
         {keywords.map((keyword, index) => (
-          <li
-            key={`${index}-${keyword}`}
-            className="flex gap-2 text-xs leading-relaxed text-fg"
-          >
-            {/* Номер дублює семантику <ol>, тому для скрінрідера він зайвий. */}
-            <span aria-hidden className="num shrink-0 text-faint">
-              {index + 1}.
-            </span>
-            {keyword}
-          </li>
+          <li key={`${index}-${keyword}`}>{keyword}</li>
         ))}
       </ol>
     </div>

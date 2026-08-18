@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import type { PublicShare } from "@brief/shared";
+import { CopyBrief } from "../components/brief/CopyBrief";
 import { IntroBlock } from "../components/brief/IntroBlock";
 import { KeywordTable } from "../components/brief/KeywordTable";
 import { MetaBlock } from "../components/brief/MetaBlock";
@@ -16,6 +17,7 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { Spinner } from "../components/ui/Spinner";
 import { TabBar, type TabItem } from "../components/ui/TabBar";
 import { ApiRequestError } from "../lib/api";
+import { copySelection } from "../lib/copySelection";
 import { formatDateTime } from "../lib/format";
 import { loadPublicShare } from "../services/shares";
 
@@ -169,7 +171,13 @@ export function PublicSharePage() {
         )}
 
         {active === "brief" && snapshot.brief && (
-          <div className="space-y-4">
+          <div className="space-y-4" onCopy={copySelection}>
+            {/* Публічне посилання найчастіше відкриває саме райтер — і перше,
+                що він робить із ТЗ, це переносить його до себе в документ. */}
+            <div className="flex justify-end">
+              <CopyBrief brief={snapshot.brief} />
+            </div>
+
             <MetaBlock brief={snapshot.brief} />
             <IntroBlock intro={snapshot.brief.intro} />
             <StructureTree brief={snapshot.brief} />
