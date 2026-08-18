@@ -1,4 +1,6 @@
 import type { PromptGroup, PromptVariable } from "@brief/shared";
+import { DEFAULT_REQUIREMENTS, requirementsProblem } from "@brief/shared";
+import { AppError } from "../../http/errors";
 import * as defaults from "./defaults";
 
 /**
@@ -25,6 +27,7 @@ export const PROMPT_KEYS = [
   "compare.language_split",
   "shared.rules",
   "shared.team_rules",
+  "document.requirements",
 ] as const;
 
 export type PromptKey = (typeof PROMPT_KEYS)[number];
@@ -37,6 +40,14 @@ export interface PromptDefinition {
   variables: PromptVariable[];
   /** Початковий текст. Він же — те, до чого повертає скидання. */
   body: string;
+  /**
+   * Додаткова перевірка тексту перед збереженням — понад звірку вставок.
+   *
+   * Потрібна там, де текст має не лише сенс, а й форму: вимоги до тексту
+   * розбираються на блоки й пункти, і текст, у якому їх не видно, дав би
+   * порожній хвіст у кожному ТЗ. Кидає `AppError` із поясненням для адміна.
+   */
+  validate?: (body: string) => void;
 }
 
 /** Мова контенту — потрібна майже кожному промпту, тому описана один раз. */
@@ -278,6 +289,26 @@ export const PROMPT_DEFINITIONS: readonly PromptDefinition[] = [
     ],
     body: defaults.TEAM_RULES,
   },
+  {
+    key: "document.requirements",
+    title: "Вимоги до тексту в ТЗ",
+    description:
+      "Єдиний текст на цій сторінці, який не йде в модель: він дописується " +
+      "в кінець кожного ТЗ і адресований райтеру. Однаковий для всіх мов і " +
+      "тем, тому й не генерується. Рядок «# Назва блока» задає заголовок, " +
+      "«- вимога» — пункт, «- вимога» з відступом — уточнення під попереднім " +
+      "пунктом. Нумерація проставляється при показі, у тексті її не пишуть.",
+    group: "document",
+    // Вставок немає навмисно: підставляти сюди нічого, а `{{...}}` у тексті
+    // означало б, що райтер побачить у ТЗ дужки замість значення.
+    variables: [],
+    body: DEFAULT_REQUIREMENTS,
+    validate: (body) => {
+      const problem = requirementsProblem(body);
+
+      if (problem) throw new AppError("requirements_invalid", problem, 422);
+    },
+  },
 ];
 
 const BY_KEY = new Map<string, PromptDefinition>(
@@ -322,6 +353,17 @@ function checkDefaults(): void {
             "але її немає в початковому тексті",
         );
       }
+    }
+
+    // Та сама пастка, що й зі вставками: перевірка форми, якої не проходить
+    // початковий текст, зробила б будь-яку правку неможливою.
+    try {
+      definition.validate?.(definition.body);
+    } catch (error) {
+      problems.push(
+        `${definition.key}: початковий текст не проходить власну перевірку — ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 

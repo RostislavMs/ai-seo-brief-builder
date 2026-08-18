@@ -8,6 +8,17 @@ export type * from "./types/account";
 export type * from "./types/rules";
 export type * from "./types/prompts";
 
+export type {
+  WriterRequirement,
+  WriterRequirementGroup,
+} from "./brief/requirements";
+export {
+  DEFAULT_REQUIREMENTS,
+  WRITER_REQUIREMENTS,
+  parseRequirements,
+  requirementsProblem,
+} from "./brief/requirements";
+
 export { isUsable, readyCount, usablePages } from "./utils/analyses";
 export { groupHeadings, outlineToText } from "./utils/headings";
 export { formatRange, normalizeRange, sumRanges } from "./utils/range";

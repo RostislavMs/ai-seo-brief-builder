@@ -44,6 +44,18 @@ export interface BriefResponse {
   brief: SeoBrief;
 }
 
+/**
+ * GET /api/brief/requirements — чинний текст постійних вимог до тексту.
+ *
+ * Не частина `SeoBrief`: вимоги однакові для всіх ТЗ і не залежать ні від
+ * теми, ні від моделі, тому їх правлять окремо (сторінка «Промпти», ключ
+ * `document.requirements`), а сюди вони приходять уже чинними.
+ */
+export interface RequirementsResponse {
+  /** Формат розбирає `parseRequirements()`. */
+  requirements: string;
+}
+
 /** POST /api/chat — правки брифу через діалог. */
 export interface ChatRequest {
   topic: string;

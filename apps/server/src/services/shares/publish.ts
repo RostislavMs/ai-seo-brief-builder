@@ -1,6 +1,7 @@
 import type { SessionShare, SharedSections } from "@brief/shared";
 import type { AppConfig } from "../../config";
 import { AppError } from "../../http/errors";
+import { resolvePromptSet } from "../prompts/repository";
 import { assertOwner, getSession } from "../sessions/repository";
 import { deleteShare, saveShare } from "./repository";
 import { buildSnapshot, isEmptySnapshot } from "./snapshot";
@@ -24,8 +25,18 @@ export async function publishShare(
   // повної сесії, і вона ж перевіряє власника. Заодно спрацьовує звірка
   // збереженого ТЗ і звіту зі схемами, тому в публічну версію не потрапить
   // те, що застосунок уже вважає застарілим форматом.
-  const session = await getSession(config, userId, sessionId);
-  const snapshot = buildSnapshot(session, sections);
+  // Сесія й чинні тексти — паралельно: зліпок потребує обох, і одне одного
+  // вони не чекають.
+  const [session, prompts] = await Promise.all([
+    getSession(config, userId, sessionId),
+    resolvePromptSet(config),
+  ]);
+
+  const snapshot = buildSnapshot(
+    session,
+    sections,
+    prompts["document.requirements"],
+  );
 
   if (isEmptySnapshot(snapshot)) {
     throw new AppError(

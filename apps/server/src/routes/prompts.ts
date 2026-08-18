@@ -24,7 +24,10 @@ import {
 } from "../services/prompts/repository";
 
 /**
- * Промпти до моделі.
+ * Промпти до моделі — і, як виняток, вимоги до тексту в самому ТЗ
+ * (`document.requirements`): вони потребують того самого — початкового тексту
+ * в коді, правки лише адміном, історії й скидання, — тому йдуть тим самим
+ * маршрутом, а не другою копією цієї машинерії.
  *
  * Читання відкрите всім, хто ввійшов: за цими текстами генерується ТЗ, і
  * бачити, що саме просять у моделі, має кожен — рівно як і правила для мов.
@@ -105,7 +108,11 @@ promptRoutes.put("/:key", requireAdmin, async (c) => {
   const input = parseBody(updateSchema, await readJson(c.req.raw));
 
   // Ключ уже звірений, тому опис існує.
-  assertValidBody(promptDefinition(key)!, input.body);
+  const definition = promptDefinition(key)!;
+
+  assertValidBody(definition, input.body);
+  // Понад звірку вставок: у тексту може бути ще й форма — див. PromptDefinition.
+  definition.validate?.(input.body);
 
   const prompt = await savePrompt(
     getConfig(),
