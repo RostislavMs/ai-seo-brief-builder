@@ -1,9 +1,11 @@
 import type { SeoBrief } from "@brief/shared";
 import type { TaskState } from "../../hooks/useSession";
+import { copySelection } from "../../lib/copySelection";
 import { plural } from "../../lib/format";
 import { Callout } from "../ui/Callout";
 import { EmptyState } from "../ui/EmptyState";
 import { TaskProgress } from "../ui/TaskProgress";
+import { CopyBrief } from "./CopyBrief";
 import { IntroBlock } from "./IntroBlock";
 import { KeywordTable } from "./KeywordTable";
 import { MetaBlock } from "./MetaBlock";
@@ -84,14 +86,18 @@ export function BriefPanel({
   }
 
   return (
-    <div className="space-y-4">
+    // onCopy: виділене мишею йде в буфер чистими заголовками, списками й
+    // таблицями замість стилів інтерфейсу — див. copySelection.
+    <div className="space-y-4" onCopy={copySelection}>
       {state.status === "error" && (
         <Callout tone="danger" live>
           {state.message}
         </Callout>
       )}
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <CopyBrief brief={brief} />
+
         <button
           type="button"
           className="btn-quiet border border-line-strong"

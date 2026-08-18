@@ -20,8 +20,12 @@ export function Instruction({ text }: InstructionProps) {
   if (!text?.trim()) return null;
 
   return (
+    // data-copy-em: при копіюванні смуга й тло не переживуть вставку, а
+    // відрізняти інструкцію від тексту статті треба й у документі — там цю
+    // роль бере курсив.
     <p
       lang="en"
+      data-copy-em
       className="rounded-r-inset border-l-2 border-accent-line bg-accent-soft
         py-1.5 pr-2 pl-3 text-xs leading-relaxed text-fg"
     >

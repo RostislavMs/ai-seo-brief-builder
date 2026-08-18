@@ -1,45 +1,32 @@
-import type { BriefBlock, BriefBlockKind } from "@brief/shared";
+import type { BriefBlock } from "@brief/shared";
 import { formatRange } from "@brief/shared";
+import {
+  BLOCK_LABEL,
+  ORDERED_KINDS,
+  blockPayload,
+} from "../../lib/briefDocument";
 import { Badge } from "../ui/Badge";
+import { CopyButton } from "../ui/CopyButton";
 import { Instruction } from "../ui/Instruction";
-
-const KIND_LABEL: Record<BriefBlockKind, string> = {
-  list: "список",
-  ordered_list: "нумерований список",
-  table: "таблиця",
-  pros_cons: "плюси та мінуси",
-  questions: "питання",
-  highlight: "виділити головне",
-  links: "посилання",
-  template: "шаблон опису",
-};
-
-/** Де порядок пунктів несе зміст, а де це просто перелік. */
-const ORDERED: ReadonlySet<BriefBlockKind> = new Set<BriefBlockKind>([
-  "ordered_list",
-  "questions",
-  "template",
-]);
 
 function Items({ block }: { block: BriefBlock }) {
   if (block.items.length === 0) return null;
 
-  const ordered = ORDERED.has(block.kind);
+  const ordered = ORDERED_KINDS.has(block.kind);
   const Tag = ordered ? "ol" : "ul";
 
   return (
-    <Tag className="mt-2 space-y-1">
+    /*
+     * Маркер — нативний ::marker, а не намальований span у flex-рядку.
+     * Виглядає так само (той самий висячий відступ), але переживає копіювання:
+     * зі span'ом Google Docs вставляв абзаци з дублем «•» замість списку.
+     */
+    <Tag
+      className={`mt-2 space-y-1 ps-5 text-xs leading-relaxed text-muted
+        marker:text-faint ${ordered ? "list-decimal marker:font-mono" : "list-disc"}`}
+    >
       {block.items.map((item, index) => (
-        <li
-          key={`${index}-${item}`}
-          className="flex gap-2 text-xs leading-relaxed text-muted"
-        >
-          {/* Маркер дублює семантику списку, тому для скрінрідера він зайвий. */}
-          <span aria-hidden className={ordered ? "num shrink-0 text-faint" : "text-faint"}>
-            {ordered ? `${index + 1}.` : "•"}
-          </span>
-          {item}
-        </li>
+        <li key={`${index}-${item}`}>{item}</li>
       ))}
     </Tag>
   );
@@ -146,31 +133,38 @@ interface BlockViewProps {
 export function BlockView({ block }: BlockViewProps) {
   return (
     <div className="panel p-3">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <Badge tone="info">{KIND_LABEL[block.kind]}</Badge>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div data-copy-strong className="flex flex-wrap items-center gap-2">
+          <Badge tone="info">{BLOCK_LABEL[block.kind]}</Badge>
 
-        {block.itemWordCount && (
-          <span className="num text-2xs text-subtle">
-            {formatRange(block.itemWordCount)} сл. на опис
-          </span>
-        )}
+          {block.itemWordCount && (
+            <span className="num text-2xs text-subtle">
+              {formatRange(block.itemWordCount)} сл. на опис
+            </span>
+          )}
 
-        {(block.kind === "pros_cons" || block.kind === "template") && (
-          <>
-            {/* «+» і «−» поруч із кольором: без знаків рядки розрізняв би
-                лише зелений проти червоного — найгірша пара для дальтоніків. */}
-            {block.prosCount && (
-              <span className="num text-2xs text-success">
-                + {formatRange(block.prosCount)}
-              </span>
-            )}
-            {block.consCount && (
-              <span className="num text-2xs text-danger">
-                − {formatRange(block.consCount)}
-              </span>
-            )}
-          </>
-        )}
+          {(block.kind === "pros_cons" || block.kind === "template") && (
+            <>
+              {/* «+» і «−» поруч із кольором: без знаків рядки розрізняв би
+                  лише зелений проти червоного — найгірша пара для дальтоніків. */}
+              {block.prosCount && (
+                <span className="num text-2xs text-success">
+                  + {formatRange(block.prosCount)}
+                </span>
+              )}
+              {block.consCount && (
+                <span className="num text-2xs text-danger">
+                  − {formatRange(block.consCount)}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+
+        <CopyButton
+          payload={() => blockPayload(block)}
+          label={`Копіювати блок: ${BLOCK_LABEL[block.kind]}`}
+        />
       </div>
 
       <Instruction text={block.instruction} />

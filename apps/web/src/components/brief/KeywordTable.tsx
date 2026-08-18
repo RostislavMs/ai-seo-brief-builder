@@ -1,6 +1,8 @@
 import type { BriefKeyword } from "@brief/shared";
 import { formatRange } from "@brief/shared";
+import { keywordTablePayload } from "../../lib/briefDocument";
 import { plural } from "../../lib/format";
+import { CopyButton } from "../ui/CopyButton";
 
 interface KeywordTableProps {
   keywords: readonly BriefKeyword[];
@@ -25,7 +27,9 @@ export function KeywordTable({ keywords }: KeywordTableProps) {
     <section className="card">
       <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-4 sm:px-5">
         <div>
-          <h3 className="text-sm font-semibold">Ключові слова</h3>
+          <h3 data-copy-heading="2" className="text-sm font-semibold">
+            Ключові слова
+          </h3>
           {/* Без цього уточнення числа виглядають завищеними: райтер рахує
               входження лише в абзацах, а ТЗ рахує всю статтю. */}
           <p className="mt-0.5 text-2xs leading-relaxed text-subtle">
@@ -34,17 +38,26 @@ export function KeywordTable({ keywords }: KeywordTableProps) {
             {banned ? " Нуль означає, що форму не вживають зовсім." : ""}
           </p>
         </div>
-        <p className="num text-2xs text-subtle">
-          {keywords.length}{" "}
-          {plural(keywords.length, "ключ", "ключі", "ключів")}
-        </p>
+        <div className="flex items-baseline gap-1">
+          <p className="num text-2xs text-subtle">
+            {keywords.length}{" "}
+            {plural(keywords.length, "ключ", "ключі", "ключів")}
+          </p>
+
+          {/* Таблиця цілком: у звичайному тексті колонки розділені табуляцією,
+              тому вставляється і в Docs, і в Google Таблиці. */}
+          <CopyButton
+            payload={() => keywordTablePayload(keywords)}
+            label="Копіювати таблицю ключів"
+          />
+        </div>
       </div>
 
       <div className="overflow-x-auto border-t border-line">
         <table className="w-full text-left text-xs">
           {/* Порядок рядків несе зміст, але візуально ніяк не позначений —
               для скрінрідера це єдина підказка. */}
-          <caption className="sr-only">
+          <caption data-copy-skip className="sr-only">
             Ключові слова, відсортовані за спаданням кількості вживань
           </caption>
 

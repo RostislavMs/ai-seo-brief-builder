@@ -5,7 +5,9 @@ import type {
   BriefRecommendations,
 } from "@brief/shared";
 import { formatRange } from "@brief/shared";
+import { additionPayload, notesPayload } from "../../lib/briefDocument";
 import { Badge, type BadgeTone } from "../ui/Badge";
+import { CopyButton } from "../ui/CopyButton";
 import { Instruction } from "../ui/Instruction";
 
 const PLACEMENT: Record<
@@ -20,14 +22,21 @@ const PLACEMENT: Record<
 interface GroupProps {
   title: string;
   hint: string;
+  /** Кнопка копіювання групи, якщо групу є сенс копіювати цілком. */
+  action?: ReactNode;
   children: ReactNode;
 }
 
 /** Одна група рекомендацій. Підказка обовʼязкова: без неї три списки зливаються. */
-function Group({ title, hint, children }: GroupProps) {
+function Group({ title, hint, action, children }: GroupProps) {
   return (
     <div className="border-t border-line px-4 py-4 sm:px-5">
-      <h4 className="text-xs font-semibold text-fg">{title}</h4>
+      <div className="flex items-baseline justify-between gap-2">
+        <h4 data-copy-heading="3" className="text-xs font-semibold text-fg">
+          {title}
+        </h4>
+        {action}
+      </div>
       <p className="mt-0.5 text-2xs leading-relaxed text-subtle">{hint}</p>
       {children}
     </div>
@@ -40,18 +49,30 @@ function AdditionsList({
   additions: readonly BriefOptionalAddition[];
 }) {
   return (
-    <ul className="mt-3 space-y-3">
+    /* data-copy-unwrap: перелік тримає верстку, а не пункти. Кожне доповнення
+       має власний заголовок, підпис і інструкцію — у буліт вони не влізуть. */
+    <ul data-copy-unwrap className="mt-3 space-y-3">
       {additions.map((addition, index) => {
         const placement = PLACEMENT[addition.placement];
 
         return (
           <li key={`${index}-${addition.title}`} className="space-y-1.5">
-            <div className="flex flex-wrap items-baseline gap-2">
-              <Badge tone={placement.tone}>{placement.label}</Badge>
-              <span className="text-xs leading-relaxed font-medium text-fg">
-                {addition.title}
-              </span>
-              <Badge>+{formatRange(addition.wordCount)} сл.</Badge>
+            <div className="flex items-baseline justify-between gap-2">
+              <div
+                data-copy-heading="4"
+                className="flex flex-wrap items-baseline gap-2"
+              >
+                <Badge tone={placement.tone}>{placement.label}</Badge>
+                <span className="text-xs leading-relaxed font-medium text-fg">
+                  {addition.title}
+                </span>
+                <Badge>+{formatRange(addition.wordCount)} сл.</Badge>
+              </div>
+
+              <CopyButton
+                payload={() => additionPayload(addition)}
+                label={`Копіювати доповнення: ${addition.title}`}
+              />
             </div>
 
             {addition.section && (
@@ -70,17 +91,13 @@ function AdditionsList({
 
 function NotesList({ notes }: { notes: readonly string[] }) {
   return (
-    <ul lang="en" className="mt-3 space-y-1.5">
+    <ul
+      lang="en"
+      className="mt-3 list-disc space-y-1.5 ps-5 text-xs leading-relaxed
+        text-muted marker:text-faint"
+    >
       {notes.map((note, index) => (
-        <li
-          key={`${index}-${note}`}
-          className="flex gap-2 text-xs leading-relaxed text-muted"
-        >
-          <span aria-hidden className="text-faint">
-            ·
-          </span>
-          {note}
-        </li>
+        <li key={`${index}-${note}`}>{note}</li>
       ))}
     </ul>
   );
@@ -112,7 +129,9 @@ export function Recommendations({ recommendations }: RecommendationsProps) {
   return (
     <section className="card">
       <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-4 sm:px-5">
-        <h3 className="text-sm font-semibold">Додаткові рекомендації</h3>
+        <h3 data-copy-heading="2" className="text-sm font-semibold">
+          Додаткові рекомендації
+        </h3>
 
         {optionalAdditions.length > 0 && (
           <p className="num text-2xs text-subtle">
@@ -134,6 +153,12 @@ export function Recommendations({ recommendations }: RecommendationsProps) {
         <Group
           title="Загальні поради щодо структури"
           hint="Про статтю в цілому, а не про окремий розділ"
+          action={
+            <CopyButton
+              payload={() => notesPayload(structureNotes)}
+              label="Копіювати поради"
+            />
+          }
         >
           <NotesList notes={structureNotes} />
         </Group>
