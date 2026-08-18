@@ -233,9 +233,46 @@ function normalizeRecommendations(
   };
 }
 
+/**
+ * Адреса лишається в ТЗ, тільки якщо це справжнє зовнішнє посилання.
+ *
+ * Порожньо — внутрішнє перелінкування, і саме таких у ТЗ більшість: цільову
+ * сторінку свого сайту добирає SEO-фахівець. Але модель, якій сказано лишити
+ * поле порожнім, іноді все одно щось туди пише — `#`, назву сайту без схеми,
+ * шлях `/casino-non-aams`. Усе це не адреса, і показувати таке райтером гірше,
+ * ніж не показувати нічого: він або поставить биту адресу, або піде питати.
+ *
+ * Тому лишається тільки абсолютний http(s) URL, а решта зводиться до
+ * внутрішнього посилання — тобто до того, чим вона й була.
+ */
+function normalizeLinkUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+      ? parsed.toString()
+      : "";
+  } catch {
+    return "";
+  }
+}
+
 function normalizeBlock(block: BriefBlock): BriefBlock {
   return {
     ...block,
+    // Рядок без анкора не посилання: URL сам по собі райтеру нікуди не стає.
+    ...(block.links
+      ? {
+          links: block.links
+            .filter((link) => link.anchor.trim())
+            .map((link) => ({
+              anchor: link.anchor.trim(),
+              url: normalizeLinkUrl(link.url),
+            })),
+        }
+      : {}),
     ...(block.prosCount ? { prosCount: normalizeRange(block.prosCount) } : {}),
     ...(block.consCount ? { consCount: normalizeRange(block.consCount) } : {}),
     ...(block.itemWordCount

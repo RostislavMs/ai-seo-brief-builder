@@ -75,7 +75,14 @@ function Table({ block }: { block: BriefBlock }) {
   );
 }
 
-/** Анкор і адреса: райтер має поставити саме ці посилання, а не свої. */
+/**
+ * Анкор і адреса: райтер має поставити саме ці посилання, а не свої.
+ *
+ * Більшість рядків — внутрішнє перелінкування, і адреси в них немає: сторінку
+ * свого сайту добирає SEO-фахівець, а не райтер. У колонці тоді стоїть «#» —
+ * так само, як у ТЗ, з якими райтер працює; порожня клітинка на цьому місці
+ * читалася б як недороблене ТЗ.
+ */
 function Links({ block }: { block: BriefBlock }) {
   if (!block.links?.length) return null;
 
@@ -107,15 +114,24 @@ function Links({ block }: { block: BriefBlock }) {
                 {link.anchor}
               </td>
               <td className="border border-line px-2 py-2">
-                {/* rel обов'язковий: адреси приходять зі сторінок конкурентів. */}
-                <a
-                  href={link.url}
-                  target="_blank"
-                  rel="noreferrer nofollow"
-                  className="num break-all text-accent underline"
-                >
-                  {link.url}
-                </a>
+                {link.url ? (
+                  // rel обов'язковий: це зовнішнє джерело, назване моделлю.
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noreferrer nofollow"
+                    className="num break-all text-accent underline"
+                  >
+                    {link.url}
+                  </a>
+                ) : (
+                  <span
+                    className="num text-faint"
+                    title="Внутрішнє посилання — цільову сторінку добирає SEO-фахівець"
+                  >
+                    #
+                  </span>
+                )}
               </td>
             </tr>
           ))}

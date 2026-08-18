@@ -11,6 +11,7 @@ import type {
   PageAnalysis,
   PageComparison,
   ParsedPage,
+  RequirementsResponse,
   SeoBrief,
 } from "@brief/shared";
 import { api } from "../lib/api";
@@ -56,6 +57,19 @@ export async function requestBrief(
   const response = await api.post<BriefResponse>("/brief", request, signal);
 
   return response.brief;
+}
+
+/**
+ * Чинний текст постійних вимог до тексту.
+ *
+ * Не входить у відповідь генерації навмисно: вимоги однакові для всіх ТЗ і
+ * від сесії не залежать, тому читаються один раз, а не приїжджають у кожній
+ * відповіді моделі.
+ */
+export function fetchRequirements(signal?: AbortSignal): Promise<string> {
+  return api
+    .get<RequirementsResponse>("/brief/requirements", signal)
+    .then((response) => response.requirements);
 }
 
 /**

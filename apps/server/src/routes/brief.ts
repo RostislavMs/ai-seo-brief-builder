@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import type { BriefResponse } from "@brief/shared";
+import type { BriefResponse, RequirementsResponse } from "@brief/shared";
 import { getConfig } from "../config";
 import { requireAuth, type AuthEnv } from "../http/auth";
 import { parseBody, readJson } from "../http/validate";
@@ -28,6 +28,27 @@ const briefSchema = z.object({
 export const briefRoutes = new Hono<AuthEnv>();
 
 briefRoutes.use("*", requireAuth);
+
+/**
+ * GET /api/brief/requirements — чинний текст вимог до тексту.
+ *
+ * Окремим маршрутом, а не разом із ТЗ: вимоги не залежать від сесії й
+ * однакові для всіх, тому вкладати їх у кожну відповідь генерації означало б
+ * повторювати кілька кілобайт там, де вистачає одного запиту на відкриття
+ * застосунку.
+ *
+ * І не через `GET /api/prompts`: там віддаються всі промпти разом із
+ * початковими текстами й переліком вставок — сотні кілобайт заради одного
+ * поля, яке потрібне на кожній сторінці сесії з готовим ТЗ.
+ */
+briefRoutes.get("/requirements", async (c) => {
+  const prompts = await resolvePromptSet(getConfig());
+
+  const body: RequirementsResponse = {
+    requirements: prompts["document.requirements"],
+  };
+  return c.json(body);
+});
 
 briefRoutes.post("/", async (c) => {
   const config = getConfig();

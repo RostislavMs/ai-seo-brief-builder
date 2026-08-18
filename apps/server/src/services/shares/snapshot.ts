@@ -6,7 +6,7 @@ import type {
   SharedPage,
   SharedSections,
 } from "@brief/shared";
-import { isUsable } from "@brief/shared";
+import { DEFAULT_REQUIREMENTS, isUsable } from "@brief/shared";
 import { parsedPageSchema } from "../../schemas/page";
 import { seoBriefSchema } from "../brief/schema";
 import { pageComparisonSchema } from "../compare/schema";
@@ -30,6 +30,11 @@ export const shareSnapshotSchema = z.object({
   name: z.string(),
   topic: z.string(),
   brief: seoBriefSchema.nullable(),
+  // Зі значенням за замовчуванням, а не обовʼязково: зліпки, опубліковані до
+  // появи вимог, лишаються читабельними. Вимагати поле означало б, що кожне
+  // раніше надіслане посилання відповідає «створено в попередньому форматі»
+  // заради тексту, який у коді й так лежить.
+  requirements: z.string().default(DEFAULT_REQUIREMENTS),
   pages: z.array(sharedPageSchema).max(50),
   ownPage: sharedPageSchema.nullable(),
   comparison: pageComparisonSchema.nullable(),
@@ -68,6 +73,8 @@ function toSharedPage(analysis: PageAnalysis | null): SharedPage | null {
 export function buildSnapshot(
   session: Session,
   sections: SharedSections,
+  /** Чинний текст вимог — заморожується разом з рештою зліпка. */
+  requirements: string,
 ): ShareSnapshot {
   // Той самий isUsable, що вирішує склад промпта: публікуються рівно ті
   // сторінки, з яких складено ТЗ. Виключена вручну сторінка не годиться як
@@ -85,6 +92,7 @@ export function buildSnapshot(
     // ТЗ входить завжди, коли існує: воно — результат роботи, і публікувати
     // сесію без нього нема сенсу. Вибір стосується решти розділів.
     brief: session.brief,
+    requirements,
     pages,
     ownPage: sections.comparison ? toSharedPage(session.ownPage) : null,
     comparison: sections.comparison ? session.comparison : null,

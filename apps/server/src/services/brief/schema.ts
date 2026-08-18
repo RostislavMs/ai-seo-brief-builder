@@ -80,13 +80,26 @@ const blockSchema = z.object({
     .array(
       z.object({
         anchor: z.string().describe("IN THE CONTENT LANGUAGE. Anchor text"),
-        url: z.string().describe("Full URL including https://"),
+        url: z
+          .string()
+          .default("")
+          .describe(
+            "EMPTY STRING for an internal link — that is the normal case. " +
+              "The target page on our own site is chosen by the SEO " +
+              "specialist later, so the brief carries the anchor only. Fill " +
+              "in a full URL including https:// ONLY for an external " +
+              "authoritative source — a regulator, a responsible-gambling " +
+              "organisation, the official site of a body named in the " +
+              "competitor data — and only when you are certain of the " +
+              "domain. Never link to a competitor page and never guess an " +
+              "address.",
+          ),
       }),
     )
     .optional()
     .describe(
-      "For kind=links only — anchor text and URL for every link the writer " +
-        "must place. Use only URLs that appear in the competitor data.",
+      "For kind=links only — the links the writer must place in this section, " +
+        "1-3 of them, mostly internal.",
     ),
   itemTemplate: z
     .string()

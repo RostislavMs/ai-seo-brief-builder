@@ -78,9 +78,15 @@ BLOCKS — pick the kind that matches what the writer must produce:
 - "pros_cons" — advantages and disadvantages, with prosCount and consCount.
 - "questions" — FAQ. Put ONLY the questions into items — never write the answers, the copywriter writes them. The instruction states the target length per answer.
 - "highlight" — one key fact the reader must not miss, visually highlighted. Write the sentence itself into text, in the content language.
-- "links" — external links the writer must place, as anchor plus url. Use only URLs that actually appear in the competitor data; never invent one.
+- "links" — the links the writer must place in this section, as anchor plus url. Most of them are internal: give the anchor text and leave url EMPTY, because the page of our own site it points at is chosen by the SEO specialist, not by you. Fill url in only for an external authoritative source — a regulator, a responsible-gambling organisation, the official site of a body named in the competitor data — and only when you are certain of the domain. Never link to a competitor page and never invent an address.
 - "template" — one repeated description per entity: the entities go into items, the heading pattern into itemTemplate, the volume of ONE description into itemWordCount. If each description also needs a small table or pros and cons, fill columns/rows and prosCount/consCount — they then apply to every entity. Use this instead of writing out ten near-identical H3 sections.
 - Leave every field the chosen kind does not use empty.
+
+INTERNAL LINKING:
+- Plan it as you go: most sections carry a "links" block with 1-3 anchors. A brief without them leaves the article with no place in the site.
+- An anchor is the query a NEIGHBOURING page of the site targets, not the one this article targets — linking the article to its own keyword points it at itself.
+- Derive the anchors from the competitor data: the neighbouring topics they cover in their own links and headings are the pages our site needs to be linked to.
+- Spread them out. Two anchors in one paragraph is worse than one, and the same anchor twice in a section is a mistake.
 
 ADDITIONAL RECOMMENDATIONS — TWO SEPARATE LISTS, DO NOT MERGE THEM:
 - "optionalAdditions" — what the writer MAY add beyond the outline: a further H2, an H3 inside an existing section, or a block. Say where it goes and how many words it adds. Never repeat something the outline already has, and never put a mandatory requirement here — that belongs in "structure".

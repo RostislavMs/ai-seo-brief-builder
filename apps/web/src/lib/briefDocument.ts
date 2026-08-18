@@ -9,6 +9,7 @@ import type {
   BriefRecommendations,
   Range,
   SeoBrief,
+  WriterRequirementGroup,
 } from "@brief/shared";
 import { formatRange } from "@brief/shared";
 import { plural } from "./format";
@@ -68,13 +69,32 @@ interface Cell {
   href?: string;
 }
 
+/**
+ * Пункт списку. Здебільшого це просто рядок, і саме так його й пишуть —
+ * обʼєкт потрібен двом випадкам: перелік адрес конкурентів, де пункт має бути
+ * клікабельним, і вимоги до тексту, де під пунктом стоять уточнення.
+ */
+type Item = string | { text: string; href?: string; children?: readonly string[] };
+
+interface NormalItem {
+  text: string;
+  href?: string;
+  children: readonly string[];
+}
+
+function itemOf(item: Item): NormalItem {
+  return typeof item === "string"
+    ? { text: item, children: [] }
+    : { text: item.text, href: item.href, children: item.children ?? [] };
+}
+
 type Node =
   | { kind: "heading"; level: 1 | 2 | 3 | 4 | 5; text: string }
   | { kind: "para"; spans: Span[]; lang?: string }
   | {
       kind: "list";
       ordered: boolean;
-      items: readonly string[];
+      items: readonly Item[];
       /** Пункти англійською — курсивом, як і решта інструкцій. */
       italic?: boolean;
       lang?: string;
@@ -192,9 +212,12 @@ function pushBlock(doc: Node[], block: BriefBlock): void {
     doc.push({
       kind: "table",
       head: ["Anchor Text", "URL"],
+      // Порожня адреса — внутрішнє перелінкування, і в колонці стоїть «#»:
+      // так само, як у ТЗ, з якими працює райтер. Порожня клітинка на цьому
+      // місці читалася б як недороблене ТЗ, а не як «сторінку добере SEO».
       rows: block.links.map((link) => [
         { text: link.anchor },
-        { text: link.url, href: link.url },
+        link.url ? { text: link.url, href: link.url } : { text: "#" },
       ]),
     });
   }
@@ -269,6 +292,56 @@ function pushIntro(doc: Node[], intro: BriefIntro): void {
     intro.keywords,
     "Use these keywords once in the introduction:",
   );
+}
+
+/**
+ * Сторінки, з яких складено ТЗ.
+ *
+ * У документі вони стоять перед усім іншим, бо це перше, що райтер робить:
+ * читає конкурентів, а вже потім пише. Список належить сесії, а не ТЗ, тому
+ * приходить окремим аргументом — ТЗ лишається чистим виводом моделі.
+ */
+function pushSources(doc: Node[], sources: readonly string[]): void {
+  if (sources.length === 0) return;
+
+  doc.push({ kind: "heading", level: 2, text: "Сторінки конкурентів" });
+  pushInstruction(
+    doc,
+    "Read the competitors' pages in full before you start writing.",
+  );
+  doc.push({
+    kind: "list",
+    ordered: false,
+    items: sources.map((url) => ({ text: url, href: url })),
+  });
+}
+
+/**
+ * Постійні вимоги до тексту — в кінці, як і в ТЗ агентства.
+ *
+ * Текст не залежить ні від теми, ні від моделі: він правиться окремо, на
+ * сторінці «Промпти», і приходить сюди вже розібраним на блоки.
+ */
+function pushRequirements(
+  doc: Node[],
+  groups: readonly WriterRequirementGroup[],
+): void {
+  if (groups.length === 0) return;
+
+  doc.push({ kind: "heading", level: 2, text: "Вимоги до тексту" });
+
+  groups.forEach((group) => {
+    doc.push({ kind: "heading", level: 3, text: group.title });
+    doc.push({
+      kind: "list",
+      ordered: true,
+      lang: "en",
+      items: group.items.map((item) => ({
+        text: item.text,
+        children: item.children,
+      })),
+    });
+  });
 }
 
 function pushKeywordTable(
@@ -356,7 +429,11 @@ function pushRecommendations(
   }
 }
 
-function buildDocument(brief: SeoBrief): Node[] {
+function buildDocument(
+  brief: SeoBrief,
+  sources: readonly string[],
+  requirements: readonly WriterRequirementGroup[],
+): Node[] {
   const doc: Node[] = [];
 
   // Заголовок документа — рекомендований H1: у Docs він стає «Заголовок 1»
@@ -372,6 +449,7 @@ function buildDocument(brief: SeoBrief): Node[] {
     ],
   });
   pushInstruction(doc, brief.instruction);
+  pushSources(doc, sources);
 
   doc.push({ kind: "heading", level: 2, text: "Основна інформація" });
   doc.push({
@@ -402,6 +480,7 @@ function buildDocument(brief: SeoBrief): Node[] {
 
   pushKeywordTable(doc, brief.keywords);
   pushRecommendations(doc, brief.recommendations);
+  pushRequirements(doc, requirements);
 
   return doc;
 }
@@ -452,9 +531,23 @@ function nodeHtml(node: Node): string {
     case "list": {
       const tag = node.ordered ? "ol" : "ul";
       const items = node.items
-        .map((item) => {
-          const text = escapeHtml(item);
-          return `<li>${node.italic ? `<i>${text}</i>` : text}</li>`;
+        .map((raw) => {
+          const item = itemOf(raw);
+          let text = escapeHtml(item.text);
+
+          if (item.href) {
+            text = `<a href="${escapeHtml(item.href)}">${text}</a>`;
+          }
+          if (node.italic) text = `<i>${text}</i>`;
+
+          const children =
+            item.children.length > 0
+              ? `<ul>${item.children
+                  .map((child) => `<li>${escapeHtml(child)}</li>`)
+                  .join("")}</ul>`
+              : "";
+
+          return `<li>${text}${children}</li>`;
         })
         .join("");
 
@@ -517,9 +610,17 @@ function nodeText(node: Node): string {
 
     case "list":
       return node.items
-        .map((item, index) => {
-          const text = node.italic ? `_${item}_` : item;
-          return node.ordered ? `${index + 1}. ${text}` : `- ${text}`;
+        .map((raw, index) => {
+          const item = itemOf(raw);
+          const text = node.italic ? `_${item.text}_` : item.text;
+          const line = node.ordered
+            ? `${index + 1}. ${text}`
+            : `- ${text}`;
+          // Відступ у три пробіли, а не в два: під нумерованим пунктом
+          // «10.» менший відступ ламає вкладеність у частині рендерерів.
+          const children = item.children.map((child) => `   - ${child}`);
+
+          return [line, ...children].join("\n");
         })
         .join("\n");
 
@@ -562,8 +663,22 @@ function fragment(fill: (doc: Node[]) => void): CopyPayload {
   return toPayload(doc);
 }
 
-export function briefPayload(brief: SeoBrief): CopyPayload {
-  return toPayload(buildDocument(brief));
+export function briefPayload(
+  brief: SeoBrief,
+  sources: readonly string[] = [],
+  requirements: readonly WriterRequirementGroup[] = [],
+): CopyPayload {
+  return toPayload(buildDocument(brief, sources, requirements));
+}
+
+export function sourcesPayload(sources: readonly string[]): CopyPayload {
+  return fragment((doc) => pushSources(doc, sources));
+}
+
+export function requirementsPayload(
+  groups: readonly WriterRequirementGroup[],
+): CopyPayload {
+  return fragment((doc) => pushRequirements(doc, groups));
 }
 
 export function introPayload(intro: BriefIntro): CopyPayload {

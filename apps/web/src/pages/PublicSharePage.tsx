@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import type { PublicShare } from "@brief/shared";
+import { parseRequirements } from "@brief/shared";
 import { CopyBrief } from "../components/brief/CopyBrief";
 import { IntroBlock } from "../components/brief/IntroBlock";
 import { KeywordTable } from "../components/brief/KeywordTable";
 import { MetaBlock } from "../components/brief/MetaBlock";
 import { Recommendations } from "../components/brief/Recommendations";
+import { Sources } from "../components/brief/Sources";
 import { StructureTree } from "../components/brief/StructureTree";
+import { WriterRequirements } from "../components/brief/WriterRequirements";
 import { ComparisonReport } from "../components/compare/ComparisonReport";
 import { PublicShell } from "../components/layout/PublicShell";
 import {
@@ -121,6 +124,16 @@ export function PublicSharePage() {
   const hasPages = snapshot.pages.length > 0;
   const hasOwn = snapshot.ownPage !== null || snapshot.comparison !== null;
 
+  // Список конкурентів у ТЗ береться зі зліпка, а не з сесії: якщо автор не
+  // публікував розбір сторінок, їх адрес у зліпку немає — і показувати їх
+  // читачеві посилання ми не маємо права. Тоді блок просто не виводиться.
+  const sources = snapshot.pages.map((item) => item.page.meta.finalUrl || item.url);
+
+  // Вимоги теж зі зліпка, а не з чинного тексту: райтер працює за тим
+  // документом, який йому дали, і вимога, що змінилася після публікації,
+  // зробила б посилання не тим, що надсилали.
+  const requirements = parseRequirements(snapshot.requirements);
+
   const tabs: TabItem<Tab>[] = [
     ...(snapshot.brief ? [{ id: "brief" as const, label: "SEO ТЗ" }] : []),
     ...(hasPages
@@ -175,14 +188,20 @@ export function PublicSharePage() {
             {/* Публічне посилання найчастіше відкриває саме райтер — і перше,
                 що він робить із ТЗ, це переносить його до себе в документ. */}
             <div className="flex justify-end">
-              <CopyBrief brief={snapshot.brief} />
+              <CopyBrief
+                brief={snapshot.brief}
+                sources={sources}
+                requirements={requirements}
+              />
             </div>
 
+            <Sources sources={sources} />
             <MetaBlock brief={snapshot.brief} />
             <IntroBlock intro={snapshot.brief.intro} />
             <StructureTree brief={snapshot.brief} />
             <KeywordTable keywords={snapshot.brief.keywords} />
             <Recommendations recommendations={snapshot.brief.recommendations} />
+            <WriterRequirements groups={requirements} />
           </div>
         )}
 

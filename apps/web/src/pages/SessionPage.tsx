@@ -12,6 +12,7 @@ import { Spinner } from "../components/ui/Spinner";
 import { TabBar } from "../components/ui/TabBar";
 import { formatDateTime } from "../lib/format";
 import { readJson, writeJson } from "../lib/storage";
+import { useRequirements } from "../hooks/useRequirements";
 import { useSession } from "../hooks/useSession";
 
 type Tab = "analysis" | "brief" | "chat" | "own";
@@ -58,6 +59,10 @@ export function SessionPage() {
     publish,
     unpublish,
   } = useSession(id);
+
+  // Не в useSession: вимоги не належать сесії й однакові для всіх — читаються
+  // один раз, а не разом із кожною сесією, яку відкривають.
+  const requirements = useRequirements();
 
   const [tab, setTab] = useState<Tab>("analysis");
 
@@ -140,6 +145,15 @@ export function SessionPage() {
    */
   const usableCount = session.analyses.filter(isUsable).length;
   const parsedCount = readyCount(session.analyses);
+
+  /**
+   * Адреси, з яких складено ТЗ, — той самий відбір, що йде в промпт.
+   * Береться `finalUrl`, а не введений URL: після редиректу райтер має
+   * відкрити ту сторінку, яку читала модель.
+   */
+  const briefSources = session.analyses
+    .filter(isUsable)
+    .map((analysis) => analysis.page!.meta.finalUrl || analysis.url);
 
   /**
    * Найсвіжіший аналіз конкурента. Якщо він новіший за звіт порівняння,
@@ -261,6 +275,8 @@ export function SessionPage() {
         <BriefPanel
           brief={session.brief}
           state={briefState}
+          sources={briefSources}
+          requirements={requirements}
           readyPages={usableCount}
           excludedPages={parsedCount - usableCount}
           onGenerate={() => void runBrief()}

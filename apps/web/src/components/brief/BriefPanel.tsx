@@ -1,4 +1,4 @@
-import type { SeoBrief } from "@brief/shared";
+import type { SeoBrief, WriterRequirementGroup } from "@brief/shared";
 import type { TaskState } from "../../hooks/useSession";
 import { copySelection } from "../../lib/copySelection";
 import { plural } from "../../lib/format";
@@ -10,11 +10,17 @@ import { IntroBlock } from "./IntroBlock";
 import { KeywordTable } from "./KeywordTable";
 import { MetaBlock } from "./MetaBlock";
 import { Recommendations } from "./Recommendations";
+import { Sources } from "./Sources";
 import { StructureTree } from "./StructureTree";
+import { WriterRequirements } from "./WriterRequirements";
 
 interface BriefPanelProps {
   brief: SeoBrief | null;
   state: TaskState;
+  /** Адреси сторінок в основі ТЗ — перший блок документа для райтера. */
+  sources: readonly string[];
+  /** Чинні вимоги до тексту — останній блок документа. */
+  requirements: readonly WriterRequirementGroup[];
   /**
    * Скільки сторінок піде в AI: розібрані успішно й не виключені вручну
    * у вкладці «Аналіз».
@@ -34,6 +40,8 @@ interface BriefPanelProps {
 export function BriefPanel({
   brief,
   state,
+  sources,
+  requirements,
   readyPages,
   excludedPages,
   onGenerate,
@@ -96,7 +104,7 @@ export function BriefPanel({
       )}
 
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <CopyBrief brief={brief} />
+        <CopyBrief brief={brief} sources={sources} requirements={requirements} />
 
         <button
           type="button"
@@ -108,6 +116,9 @@ export function BriefPanel({
         </button>
       </div>
 
+      {/* Конкуренти перед усім іншим: райтер спершу їх читає, а вже потім
+          дивиться, що саме має написати. Той самий порядок, що в документі. */}
+      <Sources sources={sources} />
       <MetaBlock brief={brief} />
       {/* Вступ між основною інформацією і структурою — у тому самому порядку,
           в якому райтер пише статтю: H1, текст під ним, далі розділи. */}
@@ -115,6 +126,7 @@ export function BriefPanel({
       <StructureTree brief={brief} />
       <KeywordTable keywords={brief.keywords} />
       <Recommendations recommendations={brief.recommendations} />
+      <WriterRequirements groups={requirements} />
     </div>
   );
 }

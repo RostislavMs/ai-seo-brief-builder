@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { SeoBrief } from "@brief/shared";
+import type { SeoBrief, WriterRequirementGroup } from "@brief/shared";
 import { briefPayload } from "../../lib/briefDocument";
 import { copyFormatted, copyPlain } from "../../lib/clipboard";
 import { CheckIcon, CopyIcon } from "../ui/Icon";
@@ -17,9 +17,21 @@ type Copied = "formatted" | "markdown" | null;
 
 interface CopyBriefProps {
   brief: SeoBrief;
+  /**
+   * Адреси конкурентів, з яких складено ТЗ. Належать сесії, а не ТЗ, тому
+   * приходять окремо — інакше «список джерел» довелося б класти у вивід
+   * моделі, яка їх не обирала.
+   */
+  sources?: readonly string[];
+  /** Чинні вимоги до тексту — останній блок документа. */
+  requirements?: readonly WriterRequirementGroup[];
 }
 
-export function CopyBrief({ brief }: CopyBriefProps) {
+export function CopyBrief({
+  brief,
+  sources = [],
+  requirements = [],
+}: CopyBriefProps) {
   const [copied, setCopied] = useState<Copied>(null);
   const [failed, setFailed] = useState(false);
 
@@ -36,7 +48,7 @@ export function CopyBrief({ brief }: CopyBriefProps) {
     // Документ будується на кліку, а не заздалегідь: ТЗ — це десятки розділів
     // і сотні рядків таблиці, і тримати два його представлення в памʼяті на
     // кожному відкритті вкладки нема сенсу.
-    const { html, text } = briefPayload(brief);
+    const { html, text } = briefPayload(brief, sources, requirements);
     const ok =
       mode === "formatted"
         ? await copyFormatted(html, text)
