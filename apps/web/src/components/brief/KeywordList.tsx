@@ -1,7 +1,13 @@
 import { labeledListPayload } from "../../lib/briefDocument";
+import type { BriefPath } from "../../lib/briefEdit";
 import { CopyButton } from "../ui/CopyButton";
+import { useBriefEdit } from "./edit/BriefEditContext";
+import { AddButton, ItemControls } from "./edit/Controls";
+import { EditableText } from "./edit/Editable";
 
 interface KeywordListProps {
+  /** Шлях до масиву ключів: вступ, розділ або підрозділ. */
+  path: BriefPath;
   keywords: readonly string[];
   /** Підпис англійською — це частина ТЗ, яку читає райтер. */
   label?: string;
@@ -14,10 +20,15 @@ interface KeywordListProps {
  * читаються як мітки: за ними не видно ні кількості, ні того, що вже вжито.
  */
 export function KeywordList({
+  path,
   keywords,
   label = "Use the following keywords in this section:",
 }: KeywordListProps) {
-  if (keywords.length === 0) return null;
+  const edit = useBriefEdit();
+
+  // Порожній перелік у режимі правки лишається на місці: інакше ключі не було
+  // б куди додати — ні в щойно доданий розділ, ні в той, з якого їх прибрали.
+  if (keywords.length === 0 && !edit.editable) return null;
 
   return (
     <div>
@@ -40,9 +51,28 @@ export function KeywordList({
           text-fg marker:font-mono marker:text-faint"
       >
         {keywords.map((keyword, index) => (
-          <li key={`${index}-${keyword}`}>{keyword}</li>
+          // Ключ за індексом, а не за текстом: інакше React перестворював би
+          // елемент на кожній літері, і поле губило б каретку разом із фокусом.
+          <li key={index}>
+            <EditableText
+              path={[...path, index]}
+              value={keyword}
+              label="ключ"
+              placeholder="ключ"
+            />
+            <ItemControls
+              path={path}
+              index={index}
+              count={keywords.length}
+              noun="ключ"
+            />
+          </li>
         ))}
       </ol>
+
+      <AddButton path={path} item={() => ""}>
+        Додати ключ
+      </AddButton>
     </div>
   );
 }

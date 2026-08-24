@@ -45,10 +45,13 @@ export function SessionPage() {
     ownPageState,
     comparisonState,
     shareState,
+    briefSave,
     runAnalysis,
     runBrief,
     cancelBrief,
     sendMessage,
+    editBrief,
+    revertBrief,
     setContentLanguage,
     toggleExcluded,
     addOwnPage,
@@ -274,13 +277,17 @@ export function SessionPage() {
       {tab === "brief" && (
         <BriefPanel
           brief={session.brief}
+          original={session.originalBrief}
           state={briefState}
+          save={briefSave}
           sources={briefSources}
           requirements={requirements}
           readyPages={usableCount}
           excludedPages={parsedCount - usableCount}
           onGenerate={() => void runBrief()}
           onCancel={cancelBrief}
+          onEdit={editBrief}
+          onRevert={revertBrief}
         />
       )}
 

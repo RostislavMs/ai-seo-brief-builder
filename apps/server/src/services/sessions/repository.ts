@@ -29,6 +29,8 @@ interface SessionRow {
   topic: string;
   urls: string[];
   brief: SeoBrief | null;
+  /** Те саме ТЗ, але яким його віддала модель. Міграція 0010. */
+  original_brief: SeoBrief | null;
   comparison: PageComparison | null;
   legacy_brief_removed: boolean;
   content_language: string | null;
@@ -87,8 +89,8 @@ interface MessageRow {
 }
 
 const SESSION_COLUMNS =
-  "id, name, topic, urls, brief, comparison, legacy_brief_removed, " +
-  "content_language, created_at, updated_at";
+  "id, name, topic, urls, brief, original_brief, comparison, " +
+  "legacy_brief_removed, content_language, created_at, updated_at";
 const ANALYSIS_COLUMNS =
   "id, position, url, status, page, error, analyzed_at, role, excluded";
 const MESSAGE_COLUMNS = "id, role, content, changed_brief, created_at";
@@ -141,6 +143,10 @@ function toSession(
       .map(toAnalysis),
     messages: messages.map(toMessage),
     brief: row.brief,
+    // Колонка додана міграцією 0010. У сесії, ТЗ якої записала версія без неї,
+    // значення немає — і це не помилка, а «позначати ручні правки поки нічим»:
+    // оригінал запише перша ж правка (див. saveBrief).
+    originalBrief: row.original_brief ?? null,
     ownPage: own ? toAnalysis(own) : null,
     comparison: row.comparison,
     // Колонка додана міграцією 0005: у сесії, прочитаній старим клієнтом
@@ -168,7 +174,8 @@ async function forgetLegacyBrief(
 ): Promise<void> {
   const { error } = await supabaseAdmin(config)
     .from("sessions")
-    .update({ brief: null, legacy_brief_removed: true })
+    // Разом з оригіналом: без ТЗ порівнювати з ним нічого.
+    .update({ brief: null, original_brief: null, legacy_brief_removed: true })
     .eq("id", sessionId);
 
   if (error) console.warn("[sessions] не вдалося прибрати старе ТЗ:", error);
@@ -276,6 +283,16 @@ export async function getSession(
   const comparisonOk =
     row.comparison === null ||
     pageComparisonSchema.safeParse(row.comparison).success;
+  /**
+   * Оригінал звіряється зі схемою окремо, але падіння його не прибирає з бази
+   * і не піднімає прапорця: він не результат роботи, а лише те, з чим
+   * порівнюються ручні правки. Без нього ТЗ лишається робочим — зникають
+   * тільки позначки й повернення, і саме так це й має виглядати.
+   */
+  const originalOk =
+    briefOk &&
+    (row.original_brief === null ||
+      seoBriefSchema.safeParse(row.original_brief).success);
 
   if (!briefOk) await forgetLegacyBrief(config, sessionId);
   if (!comparisonOk) await forgetLegacyComparison(config, sessionId);
@@ -284,6 +301,7 @@ export async function getSession(
     {
       ...row,
       ...(briefOk ? {} : { brief: null, legacy_brief_removed: true }),
+      ...(originalOk ? {} : { original_brief: null }),
       ...(comparisonOk ? {} : { comparison: null }),
     },
     analyses.data ?? [],
@@ -380,6 +398,8 @@ export interface UpdateSessionInput {
   name?: string;
   topic?: string;
   brief?: SeoBrief | null;
+  /** Машинна версія ТЗ — надсилається разом із `brief` від моделі. */
+  originalBrief?: SeoBrief | null;
   comparison?: PageComparison | null;
   legacyBriefRemoved?: boolean;
   /** null — прибрати перевизначення й повернутися до автовизначення. */
@@ -397,6 +417,9 @@ export async function updateSession(
   if (patch.name !== undefined) changes["name"] = patch.name;
   if (patch.topic !== undefined) changes["topic"] = patch.topic;
   if (patch.brief !== undefined) changes["brief"] = patch.brief;
+  if (patch.originalBrief !== undefined) {
+    changes["original_brief"] = patch.originalBrief;
+  }
   if (patch.comparison !== undefined) changes["comparison"] = patch.comparison;
   if (patch.legacyBriefRemoved !== undefined) {
     changes["legacy_brief_removed"] = patch.legacyBriefRemoved;
@@ -419,6 +442,66 @@ export async function updateSession(
   }
 
   return getSession(config, userId, sessionId);
+}
+
+export interface SaveBriefInput {
+  brief: SeoBrief;
+  /**
+   * Машинний оригінал. Записується лише там, де його ще немає, — це сесія,
+   * ТЗ якої зберегла версія до міграції 0010.
+   */
+  original?: SeoBrief;
+}
+
+/**
+ * Ручна правка ТЗ.
+ *
+ * Окремо від updateSession із двох причин, і обидві — про те, що правка
+ * зберігається сама, десятки разів за сеанс:
+ *
+ * 1. У відповіді лише час запису. updateSession віддає всю сесію разом
+ *    із розібраними сторінками — сотні кілобайт на кожне натискання клавіші.
+ * 2. `original_brief` тут не перезаписується. Ним позначаються ручні правки,
+ *    тому рухати його має право лише модель (updateSession), інакше кожна
+ *    правка ставала б новою «машинною версією» і позначки зникали б одразу
+ *    після появи.
+ *
+ * `updated_at` піднімає тригер із міграції 0001 — саме тому правка робить
+ * опубліковану версію відсталою, як і будь-яка інша зміна сесії.
+ */
+export async function saveBrief(
+  config: AppConfig,
+  userId: string,
+  sessionId: string,
+  input: SaveBriefInput,
+): Promise<string> {
+  const db = supabaseAdmin(config);
+
+  // Засів оригіналу — окремим запитом і лише в порожню колонку: у другій
+  // вкладці правка могла статися раніше, і її оригінал правильніший за наш.
+  if (input.original) {
+    const { error } = await db
+      .from("sessions")
+      .update({ original_brief: input.original })
+      .eq("id", sessionId)
+      .eq("user_id", userId)
+      .is("original_brief", null);
+
+    if (error) throwDbError(error, "запис машинної версії ТЗ");
+  }
+
+  const { data, error } = await db
+    .from("sessions")
+    .update({ brief: input.brief })
+    .eq("id", sessionId)
+    .eq("user_id", userId)
+    .select("updated_at")
+    .maybeSingle<{ updated_at: string }>();
+
+  if (error) throwDbError(error, "збереження правки ТЗ");
+  if (!data) throw notFound();
+
+  return data.updated_at;
 }
 
 export async function deleteSession(
@@ -675,6 +758,9 @@ export async function importSessions(
 
       await updateSession(config, userId, created.id, {
         brief: source.brief,
+        // Оригіналом стає те саме ТЗ: у localStorage ручних правок не було,
+        // тому «розбіжностей поки немає» — єдине, що про нього відомо.
+        originalBrief: source.brief,
         legacyBriefRemoved: source.legacyBriefRemoved ?? false,
       });
 

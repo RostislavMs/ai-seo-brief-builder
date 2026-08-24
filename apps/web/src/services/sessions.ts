@@ -5,6 +5,9 @@ import type {
   CreateSessionRequest,
   ImportSessionsResponse,
   PageAnalysis,
+  SaveBriefRequest,
+  SaveBriefResponse,
+  SeoBrief,
   Session,
   SessionListResponse,
   SessionResponse,
@@ -58,6 +61,35 @@ export async function updateSession(
 
 export function deleteSession(id: string): Promise<void> {
   return api.delete(`/sessions/${id}`);
+}
+
+/**
+ * Ручна правка ТЗ.
+ *
+ * Окремо від updateSession, бо викликається інакше: не раз на дію
+ * користувача, а сама, під час набору. У відповіді тому лише час запису —
+ * updateSession віддавав би всю сесію разом із розібраними сторінками,
+ * тобто сотні кілобайт на кожну паузу в наборі.
+ *
+ * `original` — машинна версія, і надсилається вона лише для сесій, ТЗ яких
+ * зберегла версія до її появи: сервер запише її один раз, у порожню колонку.
+ */
+export async function saveBrief(
+  sessionId: string,
+  brief: SeoBrief,
+  original?: SeoBrief,
+): Promise<string> {
+  const request: SaveBriefRequest = {
+    brief,
+    ...(original ? { original } : {}),
+  };
+
+  const response = await api.put<SaveBriefResponse>(
+    `/sessions/${sessionId}/brief`,
+    request,
+  );
+
+  return response.savedAt;
 }
 
 export async function saveAnalysis(
