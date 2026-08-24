@@ -4,6 +4,7 @@ import type {
   AnalysisResponse,
   ImportSessionsResponse,
   MessageResponse,
+  SaveBriefResponse,
   SessionListResponse,
   SessionResponse,
   ShareResponse,
@@ -25,6 +26,7 @@ import {
   getSession,
   importSessions,
   listSessions,
+  saveBrief,
   setOwnPage,
   updateAnalysis,
   updateSession,
@@ -58,6 +60,7 @@ const updateSchema = z
     name: z.string().trim().min(1).max(120).optional(),
     topic: z.string().trim().max(300).optional(),
     brief: seoBriefSchema.nullable().optional(),
+    originalBrief: seoBriefSchema.nullable().optional(),
     comparison: pageComparisonSchema.nullable().optional(),
     legacyBriefRemoved: z.boolean().optional(),
     contentLanguage: languageCodeSchema.nullable().optional(),
@@ -68,6 +71,19 @@ const updateSchema = z
 
 const ownPageSchema = z.object({
   url: z.string().trim().min(1, "URL не може бути порожнім").max(2000),
+});
+
+/**
+ * Ручна правка ТЗ. Тією ж схемою, якою перевіряли відповідь моделі: правка
+ * додає порожні поля й прибирає розділи, і ТЗ після неї має лишитися тим
+ * самим документом, а не «майже ТЗ».
+ *
+ * `original` — необовʼязково й лише для сесій, ТЗ яких зберегла версія до
+ * міграції 0010: сервер запише його один раз, у порожню колонку.
+ */
+const saveBriefSchema = z.object({
+  brief: seoBriefSchema,
+  original: seoBriefSchema.optional(),
 });
 
 /**
@@ -216,6 +232,27 @@ sessionRoutes.patch("/:id", async (c) => {
 sessionRoutes.delete("/:id", async (c) => {
   await deleteSession(getConfig(), c.get("user").id, c.req.param("id"));
   return c.body(null, 204);
+});
+
+/**
+ * Ручна правка ТЗ.
+ *
+ * PUT, а не PATCH сесії: правка зберігається сама, під час набору, і PATCH
+ * віддавав би у відповідь усю сесію — разом із розібраними сторінками. Тут
+ * у відповіді лише час запису, який панель показує позначкою «збережено».
+ */
+sessionRoutes.put("/:id/brief", async (c) => {
+  const body = parseBody(saveBriefSchema, await readJson(c.req.raw));
+
+  const savedAt = await saveBrief(
+    getConfig(),
+    c.get("user").id,
+    c.req.param("id"),
+    body,
+  );
+
+  const response: SaveBriefResponse = { savedAt };
+  return c.json(response);
 });
 
 sessionRoutes.patch("/:id/analyses/:analysisId", async (c) => {

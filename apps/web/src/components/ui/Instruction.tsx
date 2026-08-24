@@ -9,6 +9,18 @@ interface InstructionProps {
 }
 
 /**
+ * Вигляд інструкції одним рядком класів.
+ *
+ * Експортується, бо ту саму смугу малює редагована інструкція
+ * ([brief/edit/EditableInstruction](../brief/edit/EditableInstruction.tsx)):
+ * там замість абзацу стоїть поле, а вигляд має лишитися той самий. Дві копії
+ * цього рядка розійшлися б з першою ж зміною відступу.
+ */
+export const INSTRUCTION_CLASS =
+  "rounded-r-inset border-l-2 border-accent-line bg-accent-soft " +
+  "py-1.5 pr-2 pl-3 text-xs leading-relaxed text-fg";
+
+/**
  * Інструкція для райтера — англійською. Візуально відокремлена навмисно:
  * і в ТЗ, і в звіті порівняння співіснують дві мови — англійські інструкції
  * та контент мовою конкурентів, — і без розділення їх легко переплутати.
@@ -23,12 +35,7 @@ export function Instruction({ text }: InstructionProps) {
     // data-copy-em: при копіюванні смуга й тло не переживуть вставку, а
     // відрізняти інструкцію від тексту статті треба й у документі — там цю
     // роль бере курсив.
-    <p
-      lang="en"
-      data-copy-em
-      className="rounded-r-inset border-l-2 border-accent-line bg-accent-soft
-        py-1.5 pr-2 pl-3 text-xs leading-relaxed text-fg"
-    >
+    <p lang="en" data-copy-em className={INSTRUCTION_CLASS}>
       {text}
     </p>
   );

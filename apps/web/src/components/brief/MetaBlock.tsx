@@ -1,7 +1,10 @@
 import type { SeoBrief } from "@brief/shared";
 import { valuePayload } from "../../lib/briefDocument";
+import type { BriefPath } from "../../lib/briefEdit";
 import { CopyButton } from "../ui/CopyButton";
-import { Instruction } from "../ui/Instruction";
+import { RevertMark } from "./edit/Controls";
+import { EditableText } from "./edit/Editable";
+import { EditableInstruction } from "./edit/EditableInstruction";
 
 /**
  * Рекомендовані межі довжини. Google обрізає довші значення у видачі,
@@ -13,12 +16,13 @@ const LIMITS = {
 } as const;
 
 interface FieldProps {
+  path: BriefPath;
   label: string;
   value: string;
   limits?: { min: number; max: number };
 }
 
-function Field({ label, value, limits }: FieldProps) {
+function Field({ path, label, value, limits }: FieldProps) {
   const length = value.length;
   const inRange = limits
     ? length >= limits.min && length <= limits.max
@@ -36,6 +40,7 @@ function Field({ label, value, limits }: FieldProps) {
             // Крім кольору, вихід за межі показує сам лічильник «N / max» —
             // тобто інформація не тримається лише на зеленому проти жовтого.
             // У документі він зайвий: там уже готове значення, а не чернетка.
+            // Під час правки він же й підказує, коли зупинитися.
             <span
               data-copy-skip
               className={`num text-2xs ${inRange ? "text-success" : "text-warn"}`}
@@ -45,6 +50,10 @@ function Field({ label, value, limits }: FieldProps) {
             </span>
           )}
 
+          {/* Повернення тут, а не поряд зі значенням: значення — абзац на всю
+              ширину, і кнопка за ним стояла б окремим рядком. */}
+          <RevertMark path={path} label={label} />
+
           <CopyButton
             payload={() => valuePayload(value)}
             label={`Копіювати: ${label}`}
@@ -52,9 +61,15 @@ function Field({ label, value, limits }: FieldProps) {
         </span>
       </div>
 
-      <p className="panel px-3 py-2 text-sm leading-relaxed text-fg">
-        {value}
-      </p>
+      <EditableText
+        as="p"
+        path={path}
+        value={value}
+        className="panel px-3 py-2 text-sm leading-relaxed text-fg"
+        label={label}
+        placeholder="Порожньо"
+        revert={false}
+      />
     </div>
   );
 }
@@ -71,26 +86,44 @@ export function MetaBlock({ brief }: MetaBlockProps) {
           Основна інформація
         </h3>
         {/* Мову визначено автоматично, тому її треба показувати:
-            інакше помилка визначення буде невидимою. */}
+            інакше помилка визначення буде невидимою. Правиться вона тут же —
+            англійською назвою, як і в решті ТЗ: саме її бачить модель, коли
+            ТЗ іде в чат на правку. */}
         <span className="num text-2xs text-subtle">
           мова контенту:{" "}
-          <span className="text-accent">{brief.contentLanguage}</span>
+          <EditableText
+            path={["contentLanguage"]}
+            value={brief.contentLanguage}
+            className="text-accent"
+            label="мова контенту"
+            placeholder="Language"
+          />
         </span>
       </div>
 
-      <Instruction text={brief.instruction} />
+      <EditableInstruction
+        path={["instruction"]}
+        text={brief.instruction}
+        scope="до статті в цілому"
+      />
 
       <Field
+        path={["recommendedTitle"]}
         label="Рекомендований Title"
         value={brief.recommendedTitle}
         limits={LIMITS.title}
       />
       <Field
+        path={["recommendedMetaDescription"]}
         label="Рекомендований Meta Description"
         value={brief.recommendedMetaDescription}
         limits={LIMITS.description}
       />
-      <Field label="Рекомендований H1" value={brief.recommendedH1} />
+      <Field
+        path={["recommendedH1"]}
+        label="Рекомендований H1"
+        value={brief.recommendedH1}
+      />
     </section>
   );
 }

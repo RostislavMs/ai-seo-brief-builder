@@ -1,10 +1,12 @@
 import type { BriefIntro } from "@brief/shared";
-import { formatRange } from "@brief/shared";
 import { introPayload, labeledListPayload } from "../../lib/briefDocument";
 import { plural } from "../../lib/format";
 import { Badge } from "../ui/Badge";
 import { CopyButton } from "../ui/CopyButton";
-import { Instruction } from "../ui/Instruction";
+import { useBriefEdit } from "./edit/BriefEditContext";
+import { AddButton, ItemControls } from "./edit/Controls";
+import { EditableRange, EditableText } from "./edit/Editable";
+import { EditableInstruction } from "./edit/EditableInstruction";
 import { KeywordList } from "./KeywordList";
 
 interface IntroBlockProps {
@@ -17,6 +19,7 @@ interface IntroBlockProps {
  * всередині дерева заголовків він читався б як ще один H2.
  */
 export function IntroBlock({ intro }: IntroBlockProps) {
+  const edit = useBriefEdit();
   const points = "Main points of the introduction:";
 
   return (
@@ -29,9 +32,20 @@ export function IntroBlock({ intro }: IntroBlockProps) {
           className="flex flex-wrap items-baseline gap-2"
         >
           <h3 className="text-sm font-semibold">Вступ після H1</h3>
-          <Badge>{formatRange(intro.wordCount)} сл.</Badge>
           <Badge>
-            {formatRange(intro.paragraphs)}{" "}
+            <EditableRange
+              path={["intro", "wordCount"]}
+              value={intro.wordCount}
+              label="обсяг вступу"
+            />{" "}
+            сл.
+          </Badge>
+          <Badge>
+            <EditableRange
+              path={["intro", "paragraphs"]}
+              value={intro.paragraphs}
+              label="кількість абзаців вступу"
+            />{" "}
             {plural(intro.paragraphs.max, "абзац", "абзаци", "абзаців")}
           </Badge>
         </div>
@@ -42,9 +56,13 @@ export function IntroBlock({ intro }: IntroBlockProps) {
         />
       </div>
 
-      <Instruction text={intro.instruction} />
+      <EditableInstruction
+        path={["intro", "instruction"]}
+        text={intro.instruction}
+        scope="вступу"
+      />
 
-      {intro.mainPoints.length > 0 && (
+      {(intro.mainPoints.length > 0 || edit.editable) && (
         <div>
           <div className="flex items-baseline justify-between gap-2">
             <p lang="en" data-copy-strong className="text-2xs text-subtle">
@@ -62,13 +80,33 @@ export function IntroBlock({ intro }: IntroBlockProps) {
               text-fg marker:font-mono marker:text-faint"
           >
             {intro.mainPoints.map((point, index) => (
-              <li key={`${index}-${point}`}>{point}</li>
+              // Ключ за індексом: за текстом React перестворював би пункт на
+              // кожній літері, і поле губило б каретку.
+              <li key={index}>
+                <EditableText
+                  path={["intro", "mainPoints", index]}
+                  value={point}
+                  label="теза вступу"
+                  placeholder="теза"
+                />
+                <ItemControls
+                  path={["intro", "mainPoints"]}
+                  index={index}
+                  count={intro.mainPoints.length}
+                  noun="тезу"
+                />
+              </li>
             ))}
           </ol>
+
+          <AddButton path={["intro", "mainPoints"]} item={() => ""}>
+            Додати тезу
+          </AddButton>
         </div>
       )}
 
       <KeywordList
+        path={["intro", "keywords"]}
         keywords={intro.keywords}
         label="Use these keywords once in the introduction:"
       />

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ChatMessage,
   PageAnalysis,
+  SeoBrief,
   Session,
   SharedSections,
 } from "@brief/shared";
@@ -20,6 +21,7 @@ import {
   loadSession,
   removeMessage,
   saveAnalysis,
+  saveBrief,
   setAnalysisExcluded,
   setOwnPage,
   updateSession,
@@ -32,6 +34,28 @@ export type TaskState =
   | { status: "running" }
   | { status: "error"; message: string };
 
+/**
+ * Стан збереження ручної правки ТЗ.
+ *
+ * Окремий від TaskState: у правки немає «виконується» як події, яку користувач
+ * почав і на яку чекає. Вона зберігається сама, і показувати про неї треба
+ * інше — що записано, і лише зрідка, що записати не вдалося.
+ */
+export type SaveState =
+  | { status: "idle" }
+  | { status: "saving" }
+  | { status: "saved" }
+  | { status: "error"; message: string };
+
+/**
+ * Скільки чекати після останньої зміни, перш ніж писати ТЗ у базу.
+ *
+ * Поле віддає готовий текст саме через паузу в наборі (InlineEditable), тому
+ * тут пауза коротка: вона склеює правки в сусідніх полях — обсяг розділу
+ * одразу після заголовка, — а не сам набір.
+ */
+const BRIEF_SAVE_DELAY_MS = 400;
+
 interface UseSessionResult {
   loadState: LoadState;
   session: Session | null;
@@ -43,6 +67,8 @@ interface UseSessionResult {
   comparisonState: TaskState;
   /** Публікація та її зняття — одна дія за раз, тому один стан на обидві. */
   shareState: TaskState;
+  /** Збереження ручної правки ТЗ. */
+  briefSave: SaveState;
   /** Аналізує всі URL сесії заново. */
   runAnalysis: () => Promise<void>;
   /** Генерує SEO ТЗ з успішно проаналізованих сторінок. */
@@ -57,6 +83,19 @@ interface UseSessionResult {
   cancelBrief: () => void;
   /** Надсилає репліку в чат; за потреби оновлює ТЗ. */
   sendMessage: (text: string) => Promise<void>;
+  /**
+   * Ручна правка ТЗ — функцією від поточного ТЗ, а не готовим значенням.
+   *
+   * Поля ТЗ зберігаються самі, і дві правки можуть статися до наступної
+   * перемальовки: готове значення в такому разі рахувалося б від застарілого
+   * ТЗ і перетирало б сусідню правку.
+   *
+   * Синхронна навмисно: у базу правка йде з паузою й окремо, а користувач
+   * має побачити свій текст одразу.
+   */
+  editBrief: (compute: (brief: SeoBrief) => SeoBrief) => void;
+  /** Повертає все ТЗ до машинної версії; ручні правки зникають. */
+  revertBrief: () => void;
   rename: (name: string) => Promise<void>;
   /** Задає мову контенту вручну; null — повернутися до автовизначення. */
   setContentLanguage: (code: string | null) => Promise<void>;
@@ -100,6 +139,7 @@ export function useSession(id: string | undefined): UseSessionResult {
     status: "idle",
   });
   const [shareState, setShareState] = useState<TaskState>({ status: "idle" });
+  const [briefSave, setBriefSave] = useState<SaveState>({ status: "idle" });
 
   /**
    * Актуальна сесія поза циклом рендеру. Запити на URL завершуються
@@ -115,6 +155,16 @@ export function useSession(id: string | undefined): UseSessionResult {
    */
   const briefRequest = useRef<AbortController | null>(null);
   const comparisonRequest = useRef<AbortController | null>(null);
+
+  /** Відкладений запис ручної правки ТЗ. */
+  const briefSaveTimer = useRef<number | null>(null);
+  /**
+   * Машинна версія, якої ще немає в базі.
+   *
+   * Заповнюється рівно один раз — на першій правці сесії, ТЗ якої зберегла
+   * версія до появи оригіналу. Далі його вже є з чим порівнювати.
+   */
+  const pendingOriginal = useRef<SeoBrief | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -169,6 +219,116 @@ export function useSession(id: string | undefined): UseSessionResult {
     },
     [],
   );
+
+  /** Скасовує відкладений запис. Викликається перед тим, як ТЗ запише модель. */
+  const dropPendingSave = useCallback((): void => {
+    if (briefSaveTimer.current === null) return;
+
+    window.clearTimeout(briefSaveTimer.current);
+    briefSaveTimer.current = null;
+  }, []);
+
+  /**
+   * Записує поточне ТЗ у базу.
+   *
+   * Пише те, що лежить у стані на момент запису, а не те, що було на момент
+   * правки: правок між ними могло бути кілька, і остання з них — правда.
+   * Через це відкладений запис ніколи не «відстає»: він завжди наздоганяє
+   * актуальний стан, навіть якщо спрацював із затримкою.
+   */
+  const flushBrief = useCallback(async (): Promise<void> => {
+    dropPendingSave();
+
+    const existing = current.current;
+    if (!existing?.brief) return;
+
+    const original = pendingOriginal.current ?? undefined;
+    setBriefSave({ status: "saving" });
+
+    try {
+      const savedAt = await saveBrief(existing.id, existing.brief, original);
+
+      // Оригінал засівається один раз: далі сервер його не перезаписує.
+      if (pendingOriginal.current === original) pendingOriginal.current = null;
+
+      // Дата з сервера, а не локальна: за нею порівнюється, чи відстала
+      // опублікована версія, і місцевий годинник тут ні до чого.
+      patch(() => ({ updatedAt: savedAt }));
+      setBriefSave({ status: "saved" });
+    } catch (error) {
+      // Стан не відкочуємо: набраний текст у користувача перед очима, і
+      // прибрати його через невдалий запис було б гірше за саму невдачу.
+      // Наступна правка спробує записати ще раз.
+      setBriefSave({ status: "error", message: errorMessage(error) });
+    }
+  }, [dropPendingSave, patch]);
+
+  const editBrief = useCallback(
+    (compute: (brief: SeoBrief) => SeoBrief): void => {
+      patch((s) => {
+        if (!s.brief) return {};
+
+        const next = compute(s.brief);
+        if (s.originalBrief) return { brief: next };
+
+        // Перша правка сесії, ТЗ якої зберегла версія без машинної копії:
+        // нею стає те, що було до цієї правки. Інакше така сесія назавжди
+        // лишилася б без позначок і без повернення.
+        pendingOriginal.current = s.brief;
+        return { brief: next, originalBrief: s.brief };
+      });
+
+      dropPendingSave();
+      briefSaveTimer.current = window.setTimeout(
+        () => void flushBrief(),
+        BRIEF_SAVE_DELAY_MS,
+      );
+    },
+    [dropPendingSave, flushBrief, patch],
+  );
+
+  const revertBrief = useCallback((): void => {
+    patch((s) => (s.originalBrief ? { brief: s.originalBrief } : {}));
+    // Без затримки: це не набір, а одна завершена дія.
+    void flushBrief();
+  }, [flushBrief, patch]);
+
+  /**
+   * Незаписана правка не має пропасти разом зі сторінкою.
+   *
+   * Два випадки, і обидва настають раніше, ніж спрацював би таймер: перехід
+   * на іншу сесію (розмонтування) і згортання вкладки. Другий — саме
+   * visibilitychange, а не beforeunload: на мобільних браузерах beforeunload
+   * при перемиканні застосунку не настає взагалі.
+   */
+  useEffect(() => {
+    function saveHidden(): void {
+      if (document.visibilityState === "hidden" && briefSaveTimer.current !== null) {
+        void flushBrief();
+      }
+    }
+
+    document.addEventListener("visibilitychange", saveHidden);
+
+    return () => {
+      document.removeEventListener("visibilitychange", saveHidden);
+
+      if (briefSaveTimer.current === null) return;
+
+      // Тут уже без стану: компонента більше немає, і показувати результат
+      // нема кому — важливо тільки, щоб запис пішов.
+      dropPendingSave();
+      const existing = current.current;
+
+      if (existing?.brief) {
+        void saveBrief(
+          existing.id,
+          existing.brief,
+          pendingOriginal.current ?? undefined,
+        ).catch(() => undefined);
+      }
+    };
+  }, [dropPendingSave, flushBrief]);
 
   const runAnalysis = useCallback(async (): Promise<void> => {
     const existing = current.current;
@@ -262,10 +422,22 @@ export function useSession(id: string | undefined): UseSessionResult {
         controller.signal,
       );
 
-      // Нове ТЗ знімає попередження про відкинуте старе.
-      await updateSession(existing.id, { brief, legacyBriefRemoved: false });
-      patch(() => ({ brief, legacyBriefRemoved: false }));
+      // Ручні правки попереднього ТЗ разом із ним і зникають, тому
+      // відкладений запис уже нічого корисного не несе.
+      dropPendingSave();
+      pendingOriginal.current = null;
 
+      // Нове ТЗ знімає попередження про відкинуте старе.
+      await updateSession(existing.id, {
+        brief,
+        // Машинною версією стає воно саме: ручних правок у щойно
+        // згенерованому немає, і рахуються вони від цієї миті.
+        originalBrief: brief,
+        legacyBriefRemoved: false,
+      });
+      patch(() => ({ brief, originalBrief: brief, legacyBriefRemoved: false }));
+
+      setBriefSave({ status: "idle" });
       setBriefState({ status: "idle" });
     } catch (error) {
       // Скасування — рішення користувача, а не збій: повертаємося в спокійний
@@ -279,7 +451,7 @@ export function useSession(id: string | undefined): UseSessionResult {
     } finally {
       briefRequest.current = null;
     }
-  }, [patch]);
+  }, [dropPendingSave, patch]);
 
   const cancelBrief = useCallback((): void => {
     briefRequest.current?.abort();
@@ -522,12 +694,25 @@ export function useSession(id: string | undefined): UseSessionResult {
         });
 
         if (result.brief) {
-          await updateSession(existing.id, { brief: result.brief });
+          // Модель отримала вже відредаговану версію й повернула її разом зі
+          // своїми змінами, тому її відповідь — теж машинна версія. Позначки
+          // ручних правок обнуляються: рахувати їх від старого оригіналу
+          // означало б позначити чужу роботу як свою.
+          dropPendingSave();
+          pendingOriginal.current = null;
+
+          await updateSession(existing.id, {
+            brief: result.brief,
+            originalBrief: result.brief,
+          });
+          setBriefSave({ status: "idle" });
         }
 
         patch((s) => ({
           messages: [...s.messages, assistantMessage],
-          ...(result.brief ? { brief: result.brief } : {}),
+          ...(result.brief
+            ? { brief: result.brief, originalBrief: result.brief }
+            : {}),
         }));
         setChatState({ status: "idle" });
       } catch (error) {
@@ -541,7 +726,7 @@ export function useSession(id: string | undefined): UseSessionResult {
         setChatState({ status: "error", message: errorMessage(error) });
       }
     },
-    [patch],
+    [dropPendingSave, patch],
   );
 
   const rename = useCallback(
@@ -632,10 +817,13 @@ export function useSession(id: string | undefined): UseSessionResult {
     ownPageState,
     comparisonState,
     shareState,
+    briefSave,
     runAnalysis,
     runBrief,
     cancelBrief,
     sendMessage,
+    editBrief,
+    revertBrief,
     rename,
     setContentLanguage,
     toggleExcluded,
